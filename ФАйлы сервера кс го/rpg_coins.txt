@@ -1,0 +1,47 @@
+#pragma semicolon 1
+#pragma newdecls required
+
+#include <sourcemod>
+
+Database g_DB = null;
+
+public Plugin myinfo = {
+    name = "RPG Coins (Playtime Reward)",
+    author = "Skvirt",
+    version = "1.0"
+};
+
+public void OnPluginStart() {
+    Database.Connect(OnDBConnect, "rpg");
+    // Таймер срабатывает каждые 60 секунд (1 минута)
+    CreateTimer(60.0, Timer_GiveCoins, _, TIMER_REPEAT);
+}
+
+public void OnDBConnect(Database db, const char[] error, any data) {
+    if (db == null) {
+        LogError("[RPG Coins] Ошибка БД: %s", error);
+        return;
+    }
+    g_DB = db;
+}
+
+public Action Timer_GiveCoins(Handle timer) {
+    if (g_DB == null) return Plugin_Continue;
+    
+    for (int i = 1; i <= MaxClients; i++) {
+        // Проверяем, что игрок на сервере и это не бот
+        if (IsClientInGame(i) && !IsFakeClient(i)) {
+            char auth[32], query[256];
+            GetClientAuthId(i, AuthId_Steam2, auth, sizeof(auth));
+            
+            // Добавляем +1 монету в базу
+            Format(query, sizeof(query), "UPDATE rpg_system SET coins = coins + 1 WHERE steamid = '%s'", auth);
+            g_DB.Query(SQL_IgnoreError, query);
+        }
+    }
+    return Plugin_Continue;
+}
+
+public void SQL_IgnoreError(Database db, DBResultSet res, const char[] err, any data) { 
+    if (err[0]) LogError("SQL Error: %s", err);
+}

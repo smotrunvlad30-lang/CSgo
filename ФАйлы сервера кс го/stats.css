@@ -1,0 +1,133 @@
+/* stats.css */
+.stats-container {
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 30px;
+    box-shadow: 0 0 30px rgba(0,0,0,0.8);
+}
+
+.page-title {
+    color: #d4af37;
+    text-transform: uppercase;
+    text-align: center;
+    font-size: 28px;
+    margin-top: 0;
+    margin-bottom: 30px;
+    letter-spacing: 2px;
+    border-bottom: 1px solid #333;
+    padding-bottom: 15px;
+}
+
+/* Стили для таблицы */
+.leaderboard {
+    width: 100%;
+    border-collapse: collapse;
+    background: #151515;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.leaderboard th {
+    background: #1a1a1a;
+    color: #888;
+    text-transform: uppercase;
+    font-size: 13px;
+    padding: 15px;
+    text-align: left;
+    border-bottom: 2px solid #222;
+}
+
+.leaderboard td {
+    padding: 15px;
+    color: #ccc;
+    border-bottom: 1px solid #222;
+    vertical-align: middle;
+}
+
+.leaderboard tr {
+    transition: 0.2s background;
+}
+
+.leaderboard tr:hover {
+    background: rgba(212, 175, 55, 0.05);
+}
+
+.leaderboard tr:last-child td {
+    border-bottom: none;
+}
+
+/* Игрок (Аватар + Ник) */
+.player-info {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.player-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 5px;
+    border: 1px solid #444;
+}
+
+.player-name {
+    font-weight: bold;
+    color: #fff;
+    font-size: 16px;
+}
+
+/* Выделение значений */
+.val-lvl {
+    color: #4caf50;
+    font-weight: bold;
+    font-size: 18px;
+}
+
+.val-credits {
+    color: #d4af37;
+    font-weight: bold;
+}
+
+.val-xp {
+    color: #888;
+    font-size: 13px;
+}
+
+/* Топ 3 Медали */
+.rank-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 35px;
+    height: 35px;
+    border-radius: 50%;
+    font-weight: bold;
+    font-size: 14px;
+    background: #222;
+    color: #888;
+}
+
+/* Золото */
+.rank-1 .rank-badge {
+    background: #d4af37;
+    color: #000;
+    box-shadow: 0 0 15px rgba(212, 175, 55, 0.5);
+}
+.rank-1 .player-name { color: #d4af37; }
+
+/* Серебро */
+.rank-2 .rank-badge {
+    background: #c0c0c0;
+    color: #000;
+    box-shadow: 0 0 15px rgba(192, 192, 192, 0.3);
+}
+.rank-2 .player-name { color: #c0c0c0; }
+
+/* Бронза */
+.rank-3 .rank-badge {
+    background: #cd7f32;
+    color: #000;
+    box-shadow: 0 0 15px rgba(205, 127, 50, 0.3);
+}
+.rank-3 .player-name { color: #cd7f32; }
