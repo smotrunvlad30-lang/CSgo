@@ -1,4 +1,5 @@
-#pragma semicolon 1
+with open("ФАйлы сервера кс го/rpg_boss_system.sp", "w", encoding="utf-8") as f:
+    f.write("""#pragma semicolon 1
 #pragma newdecls required
 
 #include <sourcemod>
@@ -135,7 +136,7 @@ public Action Command_BossMenu(int client, int args) {
     if (client < 1 || !IsClientInGame(client)) return Plugin_Handled;
     int flags = GetUserFlagBits(client);
     if (!(flags & ADMFLAG_ROOT) && !(flags & ADMFLAG_CUSTOM3)) {
-        PrintToChat(client, " \x04[RPG] \x02Ошибка: \x01У вас нет прав!");
+        PrintToChat(client, " \\x04[RPG] \\x02Ошибка: \\x01У вас нет прав!");
         return Plugin_Handled;
     }
     Menu menu = new Menu(MenuHandler_Boss);
@@ -224,7 +225,7 @@ void SpawnBoss(int client, int rarity) {
         case 2: rName = "Легендарный";
         case 3: rName = "МИФИЧЕСКИЙ";
     }
-    PrintToChatAll(" \x04[RPG] \x02БОСС ТАНОС [%s] ПОЯВИЛСЯ! У ВАС ЕСТЬ 10 МИНУТ!", rName);
+    PrintToChatAll(" \\x04[RPG] \\x02БОСС ТАНОС [%s] ПОЯВИЛСЯ! У ВАС ЕСТЬ 10 МИНУТ!", rName);
 }
 
 void StripAllWeapons(int client) {
@@ -332,11 +333,11 @@ void CheckUltimates() {
     }
     if (hpPct <= 0.3 && !g_bRageActive) {
         g_bRageActive = true;
-        PrintToChatAll(" \x04[Танос] \x02ЯРОСТЬ ТИТАНА! Урон и скорость увеличены!");
+        PrintToChatAll(" \\x04[Танос] \\x02ЯРОСТЬ ТИТАНА! Урон и скорость увеличены!");
     }
     if (hpPct <= 0.1 && !g_bFinalPhaseActive) {
         g_bFinalPhaseActive = true;
-        PrintToChatAll(" \x04[Танос] \x02Я НЕИЗБЕЖЕН! Активирован щит и безумие!");
+        PrintToChatAll(" \\x04[Танос] \\x02Я НЕИЗБЕЖЕН! Активирован щит и безумие!");
         // Перезапускаем таймер скиллов быстрее
         if (g_hSkillTimer != null) KillTimer(g_hSkillTimer);
         g_hSkillTimer = CreateTimer(7.0, Timer_RandomSkill, _, TIMER_REPEAT);
@@ -361,7 +362,7 @@ public Action Timer_RandomSkill(Handle timer) {
     SetHudTextParams(-1.0, 0.2, 3.0, 255, 0, 0, 255);
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && !IsFakeClient(i)) {
-            ShowSyncHudText(i, g_hHudSync, "ВНИМАНИЕ!\nТанос готовит:\n%s", sSkillName);
+            ShowSyncHudText(i, g_hHudSync, "ВНИМАНИЕ!\\nТанос готовит:\\n%s", sSkillName);
         }
     }
 
@@ -400,7 +401,7 @@ void Skill_TitanStrike() {
             }
         }
     }
-    PrintToChatAll(" \x04[Танос] \x02Удар Титана нанес сокрушительный урон!");
+    PrintToChatAll(" \\x04[Танос] \\x02Удар Титана нанес сокрушительный урон!");
 }
 
 void Skill_Teleport() {
@@ -420,12 +421,12 @@ void Skill_Reality() {
             CreateTimer(10.0, Timer_RemoveOverlay, GetClientUserId(i));
         }
     }
-    PrintToChatAll(" \x04[Танос] \x02Реальность полна разочарований.");
+    PrintToChatAll(" \\x04[Танос] \\x02Реальность полна разочарований.");
 }
 
 public Action Timer_RemoveOverlay(Handle timer, any userid) {
     int client = GetClientOfUserId(userid);
-    if (client && IsClientInGame(client)) ClientCommand(client, "r_screenoverlay """);
+    if (client && IsClientInGame(client)) ClientCommand(client, "r_screenoverlay \"\"");
     return Plugin_Stop;
 }
 
@@ -444,12 +445,12 @@ void Skill_TimeRewind() {
         g_iBossHP += heal;
         if (g_iBossHP > g_iBossMaxHP) g_iBossHP = g_iBossMaxHP;
         g_iTimeRewindCount++;
-        PrintToChatAll(" \x04[Танос] \x02Откат времени: Восстановлено %d HP!", heal);
+        PrintToChatAll(" \\x04[Танос] \\x02Откат времени: Восстановлено %d HP!", heal);
     }
 }
 
 void Skill_Snap() {
-    PrintToChatAll(" \x04[Танос] \x02*Щелчок*");
+    PrintToChatAll(" \\x04[Танос] \\x02*Щелчок*");
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && IsPlayerAlive(i) && i != g_iBossClient) {
             if (GetRandomInt(1, 2) == 1) {
@@ -462,7 +463,7 @@ void Skill_Snap() {
 
 void Skill_CosmicRift() {
     // Вызов метеоритов/взрывов на случайных позициях
-    PrintToChatAll(" \x04[Танос] \x02Космический Разлом!");
+    PrintToChatAll(" \\x04[Танос] \\x02Космический Разлом!");
     for(int i=0; i<5; i++) {
         int target = GetRandomPlayer();
         if (target != -1) {
@@ -532,7 +533,7 @@ void HandleRewards(int client) {
                     kv.GetString("name", sItemName, sizeof(sItemName));
                     Format(query, sizeof(query), "INSERT INTO rpg_inventory (steamid, item_id, is_equipped, slot_index) VALUES ('%s', %d, 0, 0)", sSteamID, StringToInt(sItemId));
                     if (g_dDatabase != null) g_dDatabase.Query(SQL_Callback_Silent, query);
-                    PrintToChat(client, " \x04[RPG] \x01Вы выбили \x04%s\x01 с Босса!", sItemName);
+                    PrintToChat(client, " \\x04[RPG] \\x01Вы выбили \\x04%s\\x01 с Босса!", sItemName);
                 }
             }
         } while (kv.GotoNextKey());
@@ -550,7 +551,7 @@ public Action Timer_UpdateHud(Handle timer) {
     int timeLeft = RoundToCeil(g_flBossEndTime - GetEngineTime());
     if (timeLeft <= 0) {
         g_bBossActive = false;
-        PrintToChatAll(" \x04[RPG] \x02Время вышло! Танос покинул поле боя.");
+        PrintToChatAll(" \\x04[RPG] \\x02Время вышло! Танос покинул поле боя.");
         if (IsClientInGame(g_iBossClient)) KickClient(g_iBossClient, "Время вышло");
         ClearBossTimers();
         ServerCommand("mp_ignore_round_win_conditions 0");
@@ -572,7 +573,7 @@ public Action Timer_UpdateHud(Handle timer) {
     SetHudTextParams(0.02, 0.05, 0.6, 255, 255, 255, 255);
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && !IsFakeClient(i)) {
-            ShowSyncHudText(i, g_hHudSync, "ТАНОС [%s]\nХП: %d / %d\nОсталось: %02d:%02d", rName, g_iBossHP, g_iBossMaxHP, mins, secs);
+            ShowSyncHudText(i, g_hHudSync, "ТАНОС [%s]\\nХП: %d / %d\\nОсталось: %02d:%02d", rName, g_iBossHP, g_iBossMaxHP, mins, secs);
         }
     }
     return Plugin_Continue;
@@ -618,9 +619,10 @@ void GiveRandomResource(int client) {
     else if (StrEqual(resName, "magic_crystal")) chatName = "Магический кристалл";
     else if (StrEqual(resName, "titan_heart")) chatName = "Сердце Титана";
     else chatName = "Осколок Звезды";
-    PrintToChat(client, " \x04[RPG] \x01Вы получили: \x0C%s (1 шт.) \x01за урон!", chatName);
+    PrintToChat(client, " \\x04[RPG] \\x01Вы получили: \\x0C%s (1 шт.) \\x01за урон!", chatName);
 }
 
 public void SQL_Callback_Silent(Database db, DBResultSet results, const char[] error, any data) {
-    if (error[0] != '\0') LogError("[RPG SQL Error] %s", error);
+    if (error[0] != '\\0') LogError("[RPG SQL Error] %s", error);
 }
+""")
