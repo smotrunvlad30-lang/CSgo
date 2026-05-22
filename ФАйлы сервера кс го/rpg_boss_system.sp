@@ -348,7 +348,7 @@ public Action Timer_RandomSkill(Handle timer) {
     if (!g_bBossActive || g_iBossClient == -1 || !IsPlayerAlive(g_iBossClient)) return Plugin_Continue;
 
     g_iNextSkill = GetRandomInt(1, 6);
-    char sSkillName[64];
+    char sSkillName[256];
     switch (g_iNextSkill) {
         case 1: sSkillName = "Удар Титана (Камень Силы)";
         case 2: sSkillName = "Телепортация (Камень Пространства)";
