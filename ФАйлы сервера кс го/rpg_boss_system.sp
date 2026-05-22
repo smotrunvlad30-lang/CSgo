@@ -144,12 +144,13 @@ void SpawnBossBot(int rarity) {
     g_iBossRarity = rarity;
     g_iBossClient = -1;
 
-    // Меняем имя бота, который будет создан
-    ServerCommand("bot_add_t");
-    ServerCommand("bot_join_after_player 1");
+    // Спавним бота
     ServerCommand("bot_quota_mode normal");
+    int currentQuota = GetConVarInt(FindConVar("bot_quota"));
+    SetConVarInt(FindConVar("bot_quota"), currentQuota + 1);
+    ServerCommand("bot_add_t");
 
-    CreateTimer(0.5, Timer_RenameBot, _, TIMER_REPEAT);
+    CreateTimer(1.0, Timer_RenameBot, _, TIMER_REPEAT);
 }
 
 public Action Timer_RenameBot(Handle timer) {
@@ -445,7 +446,16 @@ public Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadca
 }
 
 void EndBossFight() {
-    g_bBossActive = false; g_iBossClient = -1;
+    g_bBossActive = false;
+
+    if (g_iBossClient != -1 && IsClientInGame(g_iBossClient)) {
+        KickClient(g_iBossClient, "Танос повержен");
+    }
+    g_iBossClient = -1;
+
+    int currentQuota = GetConVarInt(FindConVar("bot_quota"));
+    if (currentQuota > 0) SetConVarInt(FindConVar("bot_quota"), currentQuota - 1);
+
     if (g_hHudTimer != null) { KillTimer(g_hHudTimer); g_hHudTimer = null; }
     if (g_hRespawnTimer != null) { KillTimer(g_hRespawnTimer); g_hRespawnTimer = null; }
     if (g_hSkillTimer != null) { KillTimer(g_hSkillTimer); g_hSkillTimer = null; }
