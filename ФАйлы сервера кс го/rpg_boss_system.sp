@@ -155,7 +155,7 @@ public Action Timer_SetupBot(Handle timer, any userid) {
 }
 
 void SetupBoss(int client) {
-    g_iBossHP = 50000 + (g_iBossRarity * 50000);
+    g_iBossHP = GetBossConfigHP(g_iBossRarity);
     g_iBossMaxHP = g_iBossHP;
     g_flBossEndTime = GetEngineTime() + 600.0;
 
@@ -202,26 +202,47 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
     if (g_bFinalPhaseActive) speedMult = 2.0;
     SetEntPropFloat(client, Prop_Send, "m_flVelocityModifier", speedMult);
 
-    if (g_bBossActive && g_iBossClient == client) {
-        int target = GetNearestPlayer(client);
-        if (target != -1) {
-            float bPos[3], tPos[3];
-            GetClientEyePosition(client, bPos);
-            GetClientEyePosition(target, tPos);
-            if (GetVectorDistance(bPos, tPos) < 100.0 && GetEngineTime() - g_flLastAttackTime >= 1.0) {
+    int target = GetNearestPlayer(client);
+    if (target != -1) {
+        float bPos[3], tPos[3], dir[3], ang[3];
+        GetClientEyePosition(client, bPos);
+        GetClientEyePosition(target, tPos);
+
+        // Вычисляем вектор направления
+        SubtractVectors(tPos, bPos, dir);
+        float dist = GetVectorLength(dir);
+
+        // Преобразуем вектор в углы обзора
+        GetVectorAngles(dir, ang);
+
+        // Устанавливаем углы для бота
+        angles[0] = ang[0];
+        angles[1] = ang[1];
+        angles[2] = 0.0; // Не крутим головой по оси Z
+
+        TeleportEntity(client, NULL_VECTOR, angles, NULL_VECTOR); // Заставляем смотреть на цель
+
+        // Заставляем бота бежать вперед (vel[0] = forward)
+        vel[0] = 300.0 * speedMult;
+        buttons |= IN_FORWARD;
+
+        if (dist < 100.0) {
+            buttons |= IN_ATTACK;
+            if (GetEngineTime() - g_flLastAttackTime >= 1.0) {
                 float dmgValue = 500.0 + (g_iBossRarity * 200.0) + (g_iSoulStealKills * 50.0);
                 if (g_bRageActive) dmgValue *= 1.5;
                 SDKHooks_TakeDamage(target, client, client, dmgValue, DMG_CLUB);
                 g_flLastAttackTime = GetEngineTime();
             }
         }
+        return Plugin_Changed;
     }
     return Plugin_Continue;
 }
 
 public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype) {
     if (!g_bBossActive || victim != g_iBossClient) return Plugin_Continue;
-    if (damagetype & DMG_FALL) return Plugin_Handled;
+    if (damagetype & DMG_FALL) return Plugin_Handled; // Нет урона от падения
     if (damage <= 0.0) return Plugin_Continue;
 
     float dmgDealt = damage;
@@ -242,12 +263,14 @@ public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &dam
     CheckUltimates();
 
     if (g_iBossHP <= 0) {
-        damage = 99999999.0;
+        // Если HP кончилось, убиваем бота по-настоящему, возвращаем обычный урон
+        damage = 9999999.0;
         return Plugin_Changed;
-    } else {
-        SetEntityHealth(victim, 99999999);
-        return Plugin_Continue;
     }
+
+    // Блокируем весь реальный урон движка (чтобы не было спама звуков/дерганий модельки)
+    // Но визуально игрок будет видеть попадания по крови, если стоит sv_showimpacts
+    return Plugin_Handled;
 }
 
 void CheckUltimates() {
@@ -529,4 +552,27 @@ float GetBossDropChance(int rarity) {
     float chance = kv.GetFloat(key, 1.0);
     delete kv;
     return chance;
+}
+
+int GetBossConfigHP(int rarity) {
+    char path[PLATFORM_MAX_PATH];
+    BuildPath(Path_SM, path, sizeof(path), "configs/rpg_boss_drops.txt");
+
+    KeyValues kv = new KeyValues("BossDrops");
+    if (!kv.ImportFromFile(path)) {
+        delete kv;
+        switch (rarity) {
+            case 0: return 500000;
+            case 1: return 1500000;
+            case 2: return 3000000;
+            case 3: return 8000000;
+        }
+        return 500000;
+    }
+
+    char key[16];
+    Format(key, sizeof(key), "hp_%d", rarity);
+    int hp = kv.GetNum(key, 500000);
+    delete kv;
+    return hp;
 }
