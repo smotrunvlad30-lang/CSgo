@@ -37,7 +37,7 @@ bool IsBoss(int client) {
 }
 
 void Boss_OnPluginStart() {
-    RegConsoleCmd("sm_sbos", Cmd_BossMenu, "Открыть меню БОССА");
+    RegConsoleCmd("sm_boss", Cmd_BossMenu, "Открыть меню БОССА");
 }
 
 void Boss_OnPlayerSpawn(int client) {
