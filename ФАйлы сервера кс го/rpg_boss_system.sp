@@ -163,7 +163,10 @@ void SetupBoss(int client) {
     for (int i = 1; i <= MaxClients; i++) { g_bPlayerParticipated[i] = false; g_iDamageCounter[i] = 0; }
 
     SetEntityModel(client, g_sBossModel);
-    SetEntityHealth(client, 99999999);
+
+    // Даем боту обычное здоровье, чтобы движок не сходил с ума от миллионов
+    SetEntityHealth(client, 50000);
+
     StripAllWeapons(client);
     GivePlayerItem(client, "weapon_knife");
 
@@ -175,7 +178,6 @@ void SetupBoss(int client) {
 
     PrintToChatAll(" \x04[RPG] \x02БОСС ТАНОС ПОЯВИЛСЯ! У ВАС ЕСТЬ 10 МИНУТ!");
 }
-
 void StripAllWeapons(int client) {
     int weapon;
     for (int i = 0; i < 5; i++) {
@@ -197,9 +199,11 @@ public Action Timer_RespawnCTs(Handle timer) {
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2]) {
     if (!g_bBossActive || client != g_iBossClient || !IsPlayerAlive(client)) return Plugin_Continue;
 
-    float speedMult = 1.0;
-    if (g_bRageActive) speedMult = 1.5;
-    if (g_bFinalPhaseActive) speedMult = 2.0;
+    // Уменьшаем базовую скорость босса
+    float speedMult = 0.7;
+    if (g_bRageActive) speedMult = 1.0;
+    if (g_bFinalPhaseActive) speedMult = 1.3;
+
     SetEntPropFloat(client, Prop_Send, "m_flVelocityModifier", speedMult);
 
     int target = GetNearestPlayer(client);
@@ -208,22 +212,18 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
         GetClientEyePosition(client, bPos);
         GetClientEyePosition(target, tPos);
 
-        // Вычисляем вектор направления
         SubtractVectors(tPos, bPos, dir);
         float dist = GetVectorLength(dir);
 
-        // Преобразуем вектор в углы обзора
         GetVectorAngles(dir, ang);
-
-        // Устанавливаем углы для бота
         angles[0] = ang[0];
         angles[1] = ang[1];
-        angles[2] = 0.0; // Не крутим головой по оси Z
+        angles[2] = 0.0;
 
-        TeleportEntity(client, NULL_VECTOR, angles, NULL_VECTOR); // Заставляем смотреть на цель
+        TeleportEntity(client, NULL_VECTOR, angles, NULL_VECTOR);
 
-        // Заставляем бота бежать вперед (vel[0] = forward)
-        vel[0] = 300.0 * speedMult;
+        // Уменьшаем скорость бега бота
+        vel[0] = 200.0 * speedMult;
         buttons |= IN_FORWARD;
 
         if (dist < 100.0) {
@@ -239,16 +239,18 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
     }
     return Plugin_Continue;
 }
-
 public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype) {
     if (!g_bBossActive || victim != g_iBossClient) return Plugin_Continue;
-    if (damagetype & DMG_FALL) return Plugin_Handled; // Нет урона от падения
+    if (damagetype & DMG_FALL) return Plugin_Handled;
+
     if (damage <= 0.0) return Plugin_Continue;
 
     float dmgDealt = damage;
     if (g_bFinalPhaseActive) dmgDealt *= 0.5;
 
+    // Вычитаем кастомное ХП
     g_iBossHP -= RoundFloat(dmgDealt);
+
     if (attacker > 0 && attacker <= MaxClients && !IsFakeClient(attacker)) {
         g_bPlayerParticipated[attacker] = true;
         PrintCenterText(attacker, "УРОН ПО БОССУ: -%d | ОСТАЛОСЬ: %d", RoundFloat(dmgDealt), g_iBossHP);
@@ -263,16 +265,18 @@ public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &dam
     CheckUltimates();
 
     if (g_iBossHP <= 0) {
-        // Если HP кончилось, убиваем бота по-настоящему, возвращаем обычный урон
+        g_iBossHP = 0;
+        // Если босс реально умер, наносим ему реальный урон, чтобы движок убил его
         damage = 9999999.0;
         return Plugin_Changed;
     }
 
+    // Не даем движку убить босса раньше времени
+    SetEntityHealth(victim, 50000);
+
     // Блокируем весь реальный урон движка (чтобы не было спама звуков/дерганий модельки)
-    // Но визуально игрок будет видеть попадания по крови, если стоит sv_showimpacts
     return Plugin_Handled;
 }
-
 void CheckUltimates() {
     float hpPct = float(g_iBossHP) / float(g_iBossMaxHP);
     if (hpPct <= 0.5 && !g_bSnapUsed) { g_bSnapUsed = true; Skill_Snap(); }
@@ -368,27 +372,25 @@ void Skill_Teleport() {
 void Skill_Reality() {
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && IsPlayerAlive(i) && i != g_iBossClient) {
-            ClientCommand(i, "r_screenoverlay \"effects/tp_eyefx/tpeye.vmt\"");
-            CreateTimer(10.0, Timer_RemoveOverlay, GetClientUserId(i));
-        }
-    }
-}
-
-public Action Timer_RemoveOverlay(Handle timer, any userid) {
-    int client = GetClientOfUserId(userid);
-    if (client && IsClientInGame(client)) ClientCommand(client, "r_screenoverlay \"\"");
-    return Plugin_Stop;
-}
-
-void Skill_MindControl() {
-    for (int i = 1; i <= MaxClients; i++) {
-        if (IsClientInGame(i) && IsPlayerAlive(i) && i != g_iBossClient && GetRandomInt(1, 2) == 1) {
-            SetEntPropFloat(i, Prop_Send, "m_flFlashDuration", 5.0);
+            // Ослепляем игроков на 7 секунд (Искажение реальности)
+            SetEntPropFloat(i, Prop_Send, "m_flFlashDuration", 7.0);
             SetEntPropFloat(i, Prop_Send, "m_flFlashMaxAlpha", 255.0);
         }
     }
 }
-
+void Skill_MindControl() {
+    for (int i = 1; i <= MaxClients; i++) {
+        if (IsClientInGame(i) && IsPlayerAlive(i) && i != g_iBossClient) {
+            if (GetRandomInt(1, 2) == 1) {
+                // Сильно замедляем и наносим урон
+                SetEntPropFloat(i, Prop_Send, "m_flVelocityModifier", 0.3);
+                SetEntPropFloat(i, Prop_Send, "m_flFlashDuration", 3.0);
+                SetEntPropFloat(i, Prop_Send, "m_flFlashMaxAlpha", 200.0);
+                SDKHooks_TakeDamage(i, g_iBossClient, g_iBossClient, 100.0, DMG_SHOCK);
+            }
+        }
+    }
+}
 void Skill_TimeRewind() {
     if (g_iTimeRewindCount < 3) {
         int heal = RoundFloat(g_iBossMaxHP * 0.1);
@@ -416,16 +418,28 @@ void Skill_Snap() {
 }
 
 void Skill_CosmicRift() {
-    for(int i=0; i<5; i++) {
+    for(int i=0; i<3; i++) {
         int target = GetRandomPlayer();
         if (target != -1) {
             float pPos[3]; GetClientAbsOrigin(target, pPos);
-            TE_SetupBeamRingPoint(pPos, 10.0, 200.0, g_iLaserModel, g_iHaloModel, 0, 10, 2.0, 10.0, 0.0, {255, 0, 0, 255}, 10, 0);
+            TE_SetupBeamRingPoint(pPos, 10.0, 300.0, g_iLaserModel, g_iHaloModel, 0, 10, 2.0, 30.0, 0.0, {255, 0, 0, 255}, 10, 0);
             TE_SendToAll();
+
+            // Наносим огромный урон всем, кто попал в зону взрыва
+            for (int j = 1; j <= MaxClients; j++) {
+                if (IsClientInGame(j) && IsPlayerAlive(j) && j != g_iBossClient) {
+                    float victimPos[3]; GetClientAbsOrigin(j, victimPos);
+                    if (GetVectorDistance(pPos, victimPos) <= 300.0) {
+                        SDKHooks_TakeDamage(j, g_iBossClient, g_iBossClient, 600.0, DMG_BLAST);
+                        float dir[3]; SubtractVectors(victimPos, pPos, dir);
+                        NormalizeVector(dir, dir); ScaleVector(dir, 800.0); dir[2] = 400.0;
+                        TeleportEntity(j, NULL_VECTOR, NULL_VECTOR, dir);
+                    }
+                }
+            }
         }
     }
 }
-
 public Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast) {
     int victim = GetClientOfUserId(event.GetInt("userid"));
     int attacker = GetClientOfUserId(event.GetInt("attacker"));
