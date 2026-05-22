@@ -401,15 +401,16 @@ void Skill_TimeRewind() {
 }
 
 void Skill_Snap() {
+    PrintToChatAll(" \x04[Танос] \x02*Щелчок*");
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && IsPlayerAlive(i) && i != g_iBossClient) {
+            // 50% шанс мгновенной смерти для каждого игрока
             if (GetRandomInt(1, 2) == 1) {
-                int hp = GetClientHealth(i);
-                if (hp > 2) {
-                    SetEntityHealth(i, hp / 2);
-                }
                 float pPos[3]; GetClientAbsOrigin(i, pPos);
                 TE_SetupSmoke(pPos, g_iSmokeModel, 50.0, 5); TE_SendToAll();
+
+                // Убиваем игрока
+                SDKHooks_TakeDamage(i, g_iBossClient, g_iBossClient, 9999999.0, DMG_DISSOLVE);
             }
         }
     }
