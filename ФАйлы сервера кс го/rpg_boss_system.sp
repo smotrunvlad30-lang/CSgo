@@ -425,7 +425,7 @@ void Skill_Reality() {
 
 public Action Timer_RemoveOverlay(Handle timer, any userid) {
     int client = GetClientOfUserId(userid);
-    if (client && IsClientInGame(client)) ClientCommand(client, "r_screenoverlay """);
+    if (client && IsClientInGame(client)) ClientCommand(client, "r_screenoverlay \"\"");
     return Plugin_Stop;
 }
 
