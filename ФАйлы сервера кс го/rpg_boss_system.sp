@@ -59,8 +59,8 @@ public void OnPluginStart() {
     HookEvent("player_death", Event_PlayerDeath);
     HookEvent("player_spawn", Event_PlayerSpawn);
 
-    RegConsoleCmd("sm_bos", Command_BossMenu);
-    RegConsoleCmd("sm_boss", Command_BossMenu);
+    RegConsoleCmd("sm_boss_admin", Command_BossMenu);
+    RegConsoleCmd("sm_boss_spawn", Command_BossMenu);
 
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i)) SDKHook(i, SDKHook_OnTakeDamage, OnTakeDamage);
