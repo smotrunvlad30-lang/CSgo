@@ -5,7 +5,7 @@
 #include <sdktools>
 #include <sdkhooks>
 #include <cstrike>
-#include "rpg_boss_drops.inc"
+
 
 public Plugin myinfo = {
     name = "RPG Boss Thanos - Custom Raid Edition",
@@ -144,13 +144,12 @@ void SpawnBossBot(int rarity) {
     g_iBossRarity = rarity;
     g_iBossClient = -1;
 
-    // Спавним бота
+    // Безопасный спавн бота
     ServerCommand("bot_quota_mode normal");
-    int currentQuota = GetConVarInt(FindConVar("bot_quota"));
-    SetConVarInt(FindConVar("bot_quota"), currentQuota + 1);
+    ServerCommand("bot_join_after_player 0");
     ServerCommand("bot_add_t");
 
-    CreateTimer(1.0, Timer_RenameBot, _, TIMER_REPEAT);
+    CreateTimer(1.5, Timer_RenameBot, _, TIMER_REPEAT);
 }
 
 public Action Timer_RenameBot(Handle timer) {
@@ -405,7 +404,10 @@ void Skill_Snap() {
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && IsPlayerAlive(i) && i != g_iBossClient) {
             if (GetRandomInt(1, 2) == 1) {
-                SetEntityHealth(i, GetClientHealth(i) / 2);
+                int hp = GetClientHealth(i);
+                if (hp > 2) {
+                    SetEntityHealth(i, hp / 2);
+                }
                 float pPos[3]; GetClientAbsOrigin(i, pPos);
                 TE_SetupSmoke(pPos, g_iSmokeModel, 50.0, 5); TE_SendToAll();
             }
@@ -449,12 +451,9 @@ void EndBossFight() {
     g_bBossActive = false;
 
     if (g_iBossClient != -1 && IsClientInGame(g_iBossClient)) {
-        KickClient(g_iBossClient, "Танос повержен");
+        ServerCommand("bot_kick %s", g_sBossName);
     }
     g_iBossClient = -1;
-
-    int currentQuota = GetConVarInt(FindConVar("bot_quota"));
-    if (currentQuota > 0) SetConVarInt(FindConVar("bot_quota"), currentQuota - 1);
 
     if (g_hHudTimer != null) { KillTimer(g_hHudTimer); g_hHudTimer = null; }
     if (g_hRespawnTimer != null) { KillTimer(g_hRespawnTimer); g_hRespawnTimer = null; }
@@ -532,3 +531,27 @@ void GiveRandomResource(int client) {
 }
 
 public void SQL_Callback_Silent(Database db, DBResultSet results, const char[] error, any data) {}
+
+float GetBossDropChance(int rarity) {
+    char path[PLATFORM_MAX_PATH];
+    BuildPath(Path_SM, path, sizeof(path), "configs/rpg_boss_drops.txt");
+
+    KeyValues kv = new KeyValues("BossDrops");
+    if (!kv.ImportFromFile(path)) {
+        delete kv;
+        // Возвращаем дефолты если файла нет
+        switch (rarity) {
+            case 0: return 5.0;
+            case 1: return 15.0;
+            case 2: return 35.0;
+            case 3: return 70.0;
+        }
+        return 1.0;
+    }
+
+    char key[16];
+    Format(key, sizeof(key), "rarity_%d", rarity);
+    float chance = kv.GetFloat(key, 1.0);
+    delete kv;
+    return chance;
+}
