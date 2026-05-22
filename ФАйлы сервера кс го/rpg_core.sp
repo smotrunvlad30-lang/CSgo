@@ -83,6 +83,7 @@ void HealPlayer(int client, int amount) {
 #include "rpg_skills_all.sp"
 #include "rpg_svip.sp"
 #include "rpg_items_core.sp" 
+#include "rpg_boss.sp" 
 
 public Plugin myinfo = { 
     name = "RPG System: CORE (Web Version)", 
