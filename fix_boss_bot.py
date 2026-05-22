@@ -1,4 +1,5 @@
-#pragma semicolon 1
+with open("ФАйлы сервера кс го/rpg_boss_system.sp", "w", encoding="utf-8") as f:
+    f.write("""#pragma semicolon 1
 #pragma newdecls required
 
 #include <sourcemod>
@@ -195,7 +196,7 @@ void SetupBoss(int client) {
 
     ServerCommand("mp_ignore_round_win_conditions 1");
 
-    PrintToChatAll(" \x04[RPG] \x02БОСС ТАНОС ПОЯВИЛСЯ! У ВАС ЕСТЬ 10 МИНУТ!");
+    PrintToChatAll(" \\x04[RPG] \\x02БОСС ТАНОС ПОЯВИЛСЯ! У ВАС ЕСТЬ 10 МИНУТ!");
 }
 
 void StripAllWeapons(int client) {
@@ -275,10 +276,10 @@ public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &dam
 void CheckUltimates() {
     float hpPct = float(g_iBossHP) / float(g_iBossMaxHP);
     if (hpPct <= 0.5 && !g_bSnapUsed) { g_bSnapUsed = true; Skill_Snap(); }
-    if (hpPct <= 0.3 && !g_bRageActive) { g_bRageActive = true; PrintToChatAll(" \x04[Танос] \x02ЯРОСТЬ ТИТАНА! Урон и скорость увеличены!"); }
+    if (hpPct <= 0.3 && !g_bRageActive) { g_bRageActive = true; PrintToChatAll(" \\x04[Танос] \\x02ЯРОСТЬ ТИТАНА! Урон и скорость увеличены!"); }
     if (hpPct <= 0.1 && !g_bFinalPhaseActive) {
         g_bFinalPhaseActive = true;
-        PrintToChatAll(" \x04[Танос] \x02Я НЕИЗБЕЖЕН!");
+        PrintToChatAll(" \\x04[Танос] \\x02Я НЕИЗБЕЖЕН!");
         if (g_hSkillTimer != null) KillTimer(g_hSkillTimer);
         g_hSkillTimer = CreateTimer(7.0, Timer_PrepareSkill, _, TIMER_REPEAT);
     }
@@ -316,7 +317,7 @@ public Action Timer_SkillCountdown(Handle timer) {
 
     SetHudTextParams(-1.0, 0.4, 1.1, 255, 0, 0, 255, 0, 0.0, 0.0, 0.0);
     for (int i = 1; i <= MaxClients; i++) {
-        if (IsClientInGame(i) && !IsFakeClient(i)) ShowSyncHudText(i, g_hHudSync, "ТАНОС ИСПОЛЬЗУЕТ: %s\nЧерез %d сек!", sSkillName, g_iWarningCount);
+        if (IsClientInGame(i) && !IsFakeClient(i)) ShowSyncHudText(i, g_hHudSync, "ТАНОС ИСПОЛЬЗУЕТ: %s\\nЧерез %d сек!", sSkillName, g_iWarningCount);
     }
     g_iWarningCount--;
     return Plugin_Continue;
@@ -367,7 +368,7 @@ void Skill_Teleport() {
 void Skill_Reality() {
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && IsPlayerAlive(i) && i != g_iBossClient) {
-            ClientCommand(i, "r_screenoverlay \"effects/tp_eyefx/tpeye.vmt\"");
+            ClientCommand(i, "r_screenoverlay \\"effects/tp_eyefx/tpeye.vmt\\"");
             CreateTimer(10.0, Timer_RemoveOverlay, GetClientUserId(i));
         }
     }
@@ -375,7 +376,7 @@ void Skill_Reality() {
 
 public Action Timer_RemoveOverlay(Handle timer, any userid) {
     int client = GetClientOfUserId(userid);
-    if (client && IsClientInGame(client)) ClientCommand(client, "r_screenoverlay \"\"");
+    if (client && IsClientInGame(client)) ClientCommand(client, "r_screenoverlay \\"\\"");
     return Plugin_Stop;
 }
 
@@ -490,7 +491,7 @@ public Action Timer_UpdateHud(Handle timer) {
 
     SetHudTextParams(0.02, 0.05, 0.6, 255, 255, 255, 255);
     for (int i = 1; i <= MaxClients; i++) {
-        if (IsClientInGame(i) && !IsFakeClient(i)) ShowSyncHudText(i, g_hHudSync, "ТАНОС [%s]\nХП: %d / %d\nОсталось: %02d:%02d", rName, g_iBossHP, g_iBossMaxHP, timeLeft / 60, timeLeft % 60);
+        if (IsClientInGame(i) && !IsFakeClient(i)) ShowSyncHudText(i, g_hHudSync, "ТАНОС [%s]\\nХП: %d / %d\\nОсталось: %02d:%02d", rName, g_iBossHP, g_iBossMaxHP, timeLeft / 60, timeLeft % 60);
     }
     return Plugin_Continue;
 }
@@ -522,3 +523,4 @@ void GiveRandomResource(int client) {
 }
 
 public void SQL_Callback_Silent(Database db, DBResultSet results, const char[] error, any data) {}
+""")
