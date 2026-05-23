@@ -166,8 +166,8 @@ void SetupBoss(int client) {
     SetEntityModel(client, g_sBossModel);
 
     // Даем боту обычное здоровье, чтобы движок не сходил с ума от миллионов
-    SetEntityHealth(client, g_iBossHP);
-    SetEntProp(client, Prop_Data, "m_iMaxHealth", g_iBossHP);
+    g_bMindControlled[client] = false;
+    SetEntityHealth(client, 9999999);
 
     StripAllWeapons(client);
     GivePlayerItem(client, "weapon_knife");
@@ -199,10 +199,28 @@ public Action Timer_RespawnCTs(Handle timer) {
 }
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2]) {
-    if (!g_bBossActive || client != g_iBossClient || !IsPlayerAlive(client)) return Plugin_Continue;
+    if (!g_bBossActive || !IsPlayerAlive(client)) return Plugin_Continue;
+
+    if (g_bMindControlled[client]) {
+        // Инвертируем управление
+        vel[0] = -vel[0];
+        vel[1] = -vel[1];
+
+        int newButtons = buttons;
+        if (buttons & IN_FORWARD) { newButtons &= ~IN_FORWARD; newButtons |= IN_BACK; }
+        else if (buttons & IN_BACK) { newButtons &= ~IN_BACK; newButtons |= IN_FORWARD; }
+        if (buttons & IN_MOVELEFT) { newButtons &= ~IN_MOVELEFT; newButtons |= IN_MOVERIGHT; }
+        else if (buttons & IN_MOVERIGHT) { newButtons &= ~IN_MOVERIGHT; newButtons |= IN_MOVELEFT; }
+        buttons = newButtons;
+
+        return Plugin_Changed;
+    }
+
+    if (client != g_iBossClient) return Plugin_Continue;
+
 
     // Уменьшаем базовую скорость босса
-    float speedMult = 0.7;
+    float speedMult = 1.3;
     if (g_bRageActive) speedMult = 1.0;
     if (g_bFinalPhaseActive) speedMult = 1.3;
 
@@ -225,7 +243,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
         TeleportEntity(client, NULL_VECTOR, angles, NULL_VECTOR);
 
         // Уменьшаем скорость бега бота
-        vel[0] = 200.0 * speedMult;
+        vel[0] = 300.0 * speedMult;
         buttons |= IN_FORWARD;
 
         if (dist < 100.0) {
@@ -427,7 +445,7 @@ void Skill_CosmicRift() {
         int target = GetRandomPlayer();
         if (target != -1) {
             float pPos[3]; GetClientAbsOrigin(target, pPos);
-            TE_SetupBeamRingPoint(pPos, 10.0, 300.0, g_iLaserModel, g_iHaloModel, 0, 10, 2.0, 30.0, 0.0, {255, 0, 0, 255}, 10, 0);
+            TE_SetupBeamRingPoint(pPos, 10.0, 300.0, g_iLaserModel, g_iHaloModel, 0, 10, 2.0, 30.0, 0.0, {128, 0, 128, 255}, 10, 0);
             TE_SendToAll();
 
             DataPack pack = new DataPack();
