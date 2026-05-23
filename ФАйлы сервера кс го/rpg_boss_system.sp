@@ -496,7 +496,14 @@ public Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadca
 public Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast) {
     int client = GetClientOfUserId(event.GetInt("userid"));
     if (g_bBossActive && client == g_iBossClient) {
-        StripAllWeapons(client); GivePlayerItem(client, "weapon_knife"); SetEntityModel(client, g_sBossModel);
+        StripAllWeapons(client);
+        GivePlayerItem(client, "weapon_knife");
+        SetEntityModel(client, g_sBossModel);
+
+        // CS:GO сбрасывает ХП до 100 при спавне игрока/бота.
+        // Принудительно ставим огромное количество ХП сразу после спавна,
+        // чтобы бот не умирал с 1 пули.
+        SetEntityHealth(client, 9999999);
     }
     return Plugin_Continue;
 }
