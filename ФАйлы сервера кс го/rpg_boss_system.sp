@@ -269,9 +269,14 @@ public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &dam
         damage *= 0.5; // Щит в финальной фазе
     }
 
-    // Позволяем движку (и другим плагинам типа rpg_core) обрабатывать этот урон
-    // Просто синхронизируем наше значение
-    g_iBossHP = GetClientHealth(victim) - RoundFloat(damage);
+    // Вычитаем из нашей кастомной переменной
+    g_iBossHP -= RoundFloat(damage);
+
+    // Синхронизируем движок, чтобы не было багов отображения
+    // Если босс умер, не мешаем движку убить его
+    if (g_iBossHP > 0) {
+        SetEntityHealth(victim, g_iBossHP);
+    }
 
     if (attacker > 0 && attacker <= MaxClients && !IsFakeClient(attacker)) {
         g_bPlayerParticipated[attacker] = true;
@@ -286,7 +291,8 @@ public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &dam
 
     CheckUltimates();
 
-    return Plugin_Changed; // Меняем урон если сработал щит
+    // Разрешаем движку и RPG плагину обработать этот урон
+    return Plugin_Changed;
 }
 void CheckUltimates() {
     float hpPct = float(g_iBossHP) / float(g_iBossMaxHP);
@@ -500,12 +506,21 @@ public Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadca
         GivePlayerItem(client, "weapon_knife");
         SetEntityModel(client, g_sBossModel);
 
-        // CS:GO сбрасывает ХП до 100 при спавне игрока/бота.
-        // Принудительно ставим огромное количество ХП сразу после спавна,
-        // чтобы бот не умирал с 1 пули.
-        SetEntityHealth(client, 9999999);
+        // CS:GO сбрасывает ХП до 100 *после* этого хука.
+        // Делаем задержку в 0.2 сек, чтобы гарантированно установить правильное здоровье.
+        CreateTimer(0.2, Timer_SetBossHealth, GetClientUserId(client));
     }
     return Plugin_Continue;
+}
+
+public Action Timer_SetBossHealth(Handle timer, any userid) {
+    int client = GetClientOfUserId(userid);
+    if (client && IsClientInGame(client) && g_bBossActive && client == g_iBossClient) {
+        // Устанавливаем движковое максимальное здоровье и текущее, чтобы не было багов с уроном
+        SetEntProp(client, Prop_Data, "m_iMaxHealth", g_iBossMaxHP);
+        SetEntityHealth(client, g_iBossHP);
+    }
+    return Plugin_Stop;
 }
 
 void EndBossFight() {
