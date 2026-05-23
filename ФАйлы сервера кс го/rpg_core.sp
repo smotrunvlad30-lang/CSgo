@@ -475,6 +475,7 @@ public void OnLoaded(Database db, DBResultSet res, const char[] err, any userid)
 
        // Теперь новые игроки будут стартовать с 0, либо с тем, что ты пропишешь в БД
 Format(insQ, sizeof(insQ), "INSERT IGNORE INTO rpg_system (steamid, nickname, lvl, xp, money) VALUES ('%s', '%s', 1, 0, 0)", auth, name);
+        g_DB.Query(SQL_IgnoreError, insQ);
 
         // === ВЫДАЧА СТАРТОВЫХ БОТИНОК ===
         int startBootID = 20; // Твой ID обычных ботинок
