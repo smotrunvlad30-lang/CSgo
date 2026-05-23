@@ -58,26 +58,13 @@ public Action Timer_ApplyWeaponSpeed(Handle timer, any userid) {
 void Movement_ApplyStatsFromItems(int client) {
     if (!IsPlayerAlive(client) || !g_bLoaded[client]) return;
 
-    // --- 1. СКОРОСТЬ ---
-    int spdLvl = GetSkillLevel(client, "speed");
-    float spdPower = GetSkillPower("speed");
-    if (spdPower <= 0.0) spdPower = 0.8;
-
-    // Даже если spdLvl == 0, предметы всё равно должны работать
-    float rpgSpeedBonus = (float(spdLvl) * spdPower) / 100.0;
+    // --- 1. СКОРОСТЬ (ТОЛЬКО ОТ ПРЕДМЕТОВ) ---
     float itemSpeedBonus = g_fItem_SpeedPct[client] / 100.0;
+    g_fSpeedCache[client] = 1.0 + itemSpeedBonus;
 
-    g_fSpeedCache[client] = 1.0 + rpgSpeedBonus + itemSpeedBonus;
-
-    // --- 2. ГРАВИТАЦИЯ ---
-    int gLvl = GetSkillLevel(client, "grav");
-    float gravPower = GetSkillPower("grav");
-    if (gravPower <= 0.0) gravPower = 5.0;
-
-    float rpgGravReduction = (float(gLvl) * gravPower) / 800.0;
+    // --- 2. ГРАВИТАЦИЯ (ТОЛЬКО ОТ ПРЕДМЕТОВ) ---
     float itemGravReduction = g_fItem_GravityFlat[client] / 800.0;
-
-    g_fGravCache[client] = 1.0 - rpgGravReduction - itemGravReduction;
+    g_fGravCache[client] = 1.0 - itemGravReduction;
 
     // Лимиты безопасности
     if (g_fGravCache[client] < 0.1) g_fGravCache[client] = 0.1;
