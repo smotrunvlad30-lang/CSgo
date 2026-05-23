@@ -202,17 +202,43 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
     if (!g_bBossActive || !IsPlayerAlive(client)) return Plugin_Continue;
 
     if (g_bMindControlled[client]) {
-        // Инвертируем управление
-        vel[0] = -vel[0];
-        vel[1] = -vel[1];
-
+        int originalButtons = buttons;
         int newButtons = buttons;
-        if (buttons & IN_FORWARD) { newButtons &= ~IN_FORWARD; newButtons |= IN_BACK; }
-        else if (buttons & IN_BACK) { newButtons &= ~IN_BACK; newButtons |= IN_FORWARD; }
-        if (buttons & IN_MOVELEFT) { newButtons &= ~IN_MOVELEFT; newButtons |= IN_MOVERIGHT; }
-        else if (buttons & IN_MOVERIGHT) { newButtons &= ~IN_MOVERIGHT; newButtons |= IN_MOVELEFT; }
-        buttons = newButtons;
 
+        // Очищаем кнопки движения
+        newButtons &= ~(IN_FORWARD | IN_BACK | IN_MOVELEFT | IN_MOVERIGHT);
+
+        // Рандомно перемешиваем нажатия
+        if (originalButtons & IN_FORWARD) {
+            int rand = GetRandomInt(0, 3);
+            if (rand == 0) newButtons |= IN_BACK;
+            else if (rand == 1) newButtons |= IN_MOVELEFT;
+            else if (rand == 2) newButtons |= IN_MOVERIGHT;
+            else newButtons |= IN_FORWARD;
+        }
+        if (originalButtons & IN_BACK) {
+            int rand = GetRandomInt(0, 3);
+            if (rand == 0) newButtons |= IN_FORWARD;
+            else if (rand == 1) newButtons |= IN_MOVELEFT;
+            else if (rand == 2) newButtons |= IN_MOVERIGHT;
+            else newButtons |= IN_BACK;
+        }
+        if (originalButtons & IN_MOVELEFT) {
+            int rand = GetRandomInt(0, 3);
+            if (rand == 0) newButtons |= IN_MOVERIGHT;
+            else if (rand == 1) newButtons |= IN_FORWARD;
+            else if (rand == 2) newButtons |= IN_BACK;
+            else newButtons |= IN_MOVELEFT;
+        }
+        if (originalButtons & IN_MOVERIGHT) {
+            int rand = GetRandomInt(0, 3);
+            if (rand == 0) newButtons |= IN_MOVELEFT;
+            else if (rand == 1) newButtons |= IN_FORWARD;
+            else if (rand == 2) newButtons |= IN_BACK;
+            else newButtons |= IN_MOVERIGHT;
+        }
+
+        buttons = newButtons;
         return Plugin_Changed;
     }
 
@@ -265,24 +291,19 @@ public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &dam
 
     if (damage <= 0.0) return Plugin_Continue;
 
+    float dmgDealt = damage;
     if (g_bFinalPhaseActive) {
-        damage *= 0.5; // Щит в финальной фазе
+        dmgDealt *= 0.5; // Щит в финальной фазе
     }
 
     // Вычитаем из нашей кастомной переменной
-    g_iBossHP -= RoundFloat(damage);
-
-    // Синхронизируем движок, чтобы не было багов отображения
-    // Если босс умер, не мешаем движку убить его
-    if (g_iBossHP > 0) {
-        SetEntityHealth(victim, g_iBossHP);
-    }
+    g_iBossHP -= RoundFloat(dmgDealt);
 
     if (attacker > 0 && attacker <= MaxClients && !IsFakeClient(attacker)) {
         g_bPlayerParticipated[attacker] = true;
-        PrintCenterText(attacker, "УРОН ПО БОССУ: -%d | ОСТАЛОСЬ: %d", RoundFloat(damage), g_iBossHP);
+        PrintCenterText(attacker, "УРОН ПО БОССУ: -%d | ОСТАЛОСЬ: %d", RoundFloat(dmgDealt), g_iBossHP);
 
-        g_iDamageCounter[attacker] += RoundFloat(damage);
+        g_iDamageCounter[attacker] += RoundFloat(dmgDealt);
         if (g_iDamageCounter[attacker] >= 5000) {
             g_iDamageCounter[attacker] -= 5000;
             if (GetRandomFloat(0.0, 100.0) <= GetBossDropChance(g_iBossRarity)) GiveRandomResource(attacker);
@@ -291,8 +312,17 @@ public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &dam
 
     CheckUltimates();
 
-    // Разрешаем движку и RPG плагину обработать этот урон
-    return Plugin_Changed;
+    if (g_iBossHP <= 0) {
+        g_iBossHP = 0;
+        // Если босс мертв, наносим ему финальный урон, чтобы убить по-настоящему
+        damage = 9999999.0;
+        return Plugin_Changed;
+    }
+
+    // Блокируем весь реальный урон движка.
+    // Это полностью отключает замедление от пуль (tagging), отбрасывание, и спам звуков попадания.
+    // Босс будет бежать сквозь пули как танк.
+    return Plugin_Handled;
 }
 void CheckUltimates() {
     float hpPct = float(g_iBossHP) / float(g_iBossMaxHP);
