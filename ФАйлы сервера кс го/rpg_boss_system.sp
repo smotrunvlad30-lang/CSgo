@@ -39,6 +39,7 @@ bool g_bSnapUsed = false;
 bool g_bRageActive = false;
 bool g_bFinalPhaseActive = false;
 int g_iSoulStealKills = 0;
+bool g_bMindControlled[MAXPLAYERS + 1];
 
 int g_iLaserModel = -1;
 int g_iHaloModel = -1;
