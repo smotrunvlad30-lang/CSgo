@@ -1,4 +1,11 @@
-#pragma semicolon 1
+import re
+
+with open("ФАйлы сервера кс го/rpg_boss_system.sp", "r", encoding="utf-8") as f:
+    content = f.read()
+
+# I noticed earlier when checking the previous version that I didn't actually restore the python script to correctly modify the file from the current state (it was probably overwritten by `git checkout` earlier). Let's do the full complete write manually.
+
+full_code = """#pragma semicolon 1
 #pragma newdecls required
 
 #include <sourcemod>
@@ -10,7 +17,7 @@ public Plugin myinfo = {
     name = "RPG Boss Thanos - Custom Raid Edition",
     author = "Skvirt (modified)",
     description = "Thanos Boss: Auto-spawn Bot, skills, ultimates, visuals.",
-    version = "45.0"
+    version = "42.0"
 };
 
 Database g_dDatabase = null;
@@ -24,6 +31,7 @@ Handle g_hHudSync = null;
 Handle g_hSkillTimer = null;
 Handle g_hWarningTimer = null;
 
+int g_iBossHP = 0;
 int g_iBossMaxHP = 0;
 float g_flBossEndTime = 0.0;
 float g_flLastAttackTime = 0.0;
@@ -38,7 +46,6 @@ bool g_bSnapUsed = false;
 bool g_bRageActive = false;
 bool g_bFinalPhaseActive = false;
 int g_iSoulStealKills = 0;
-bool g_bMindControlled[MAXPLAYERS + 1];
 
 int g_iLaserModel = -1;
 int g_iHaloModel = -1;
@@ -79,11 +86,10 @@ public void OnMapEnd() {
 
 public void OnClientPutInServer(int client) {
     SDKHook(client, SDKHook_OnTakeDamage, OnTakeDamage);
-    SDKHook(client, SDKHook_OnTakeDamagePost, OnTakeDamagePost);
     g_iDamageCounter[client] = 0;
     g_bPlayerParticipated[client] = false;
-    g_bMindControlled[client] = false;
 }
+
 public Action Timer_CheckTime(Handle timer) {
     if (!g_bBossActive) {
         char sHour[4], sMinute[4];
@@ -156,27 +162,15 @@ public Action Timer_SetupBot(Handle timer, any userid) {
 }
 
 void SetupBoss(int client) {
-    g_iBossMaxHP = GetBossConfigHP(g_iBossRarity);
+    g_iBossHP = 50000 + (g_iBossRarity * 50000);
+    g_iBossMaxHP = g_iBossHP;
     g_flBossEndTime = GetEngineTime() + 600.0;
 
     g_iTimeRewindCount = 0; g_bSnapUsed = false; g_bRageActive = false; g_bFinalPhaseActive = false; g_iSoulStealKills = 0;
-
-    for (int i = 1; i <= MaxClients; i++) {
-        g_bPlayerParticipated[i] = false;
-        g_iDamageCounter[i] = 0;
-        g_bMindControlled[i] = false;
-
-        if (IsClientInGame(i) && !IsFakeClient(i) && i != client) {
-            ChangeClientTeam(i, CS_TEAM_CT);
-            CS_RespawnPlayer(i);
-        }
-    }
+    for (int i = 1; i <= MaxClients; i++) { g_bPlayerParticipated[i] = false; g_iDamageCounter[i] = 0; }
 
     SetEntityModel(client, g_sBossModel);
-
-    SetEntProp(client, Prop_Data, "m_iMaxHealth", g_iBossMaxHP);
-    SetEntityHealth(client, g_iBossMaxHP);
-
+    SetEntityHealth(client, 99999999);
     StripAllWeapons(client);
     GivePlayerItem(client, "weapon_knife");
 
@@ -186,8 +180,9 @@ void SetupBoss(int client) {
 
     ServerCommand("mp_ignore_round_win_conditions 1");
 
-    PrintToChatAll(" \x04[RPG] \x02БОСС ТАНОС ПОЯВИЛСЯ! ВСЕ ПЕРЕВЕДЕНЫ ЗА CT. У ВАС 10 МИНУТ!");
+    PrintToChatAll(" \\x04[RPG] \\x02БОСС ТАНОС ПОЯВИЛСЯ! У ВАС ЕСТЬ 10 МИНУТ!");
 }
+
 void StripAllWeapons(int client) {
     int weapon;
     for (int i = 0; i < 5; i++) {
@@ -207,128 +202,68 @@ public Action Timer_RespawnCTs(Handle timer) {
 }
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2]) {
-    if (!g_bBossActive || !IsPlayerAlive(client)) return Plugin_Continue;
+    if (!g_bBossActive || client != g_iBossClient || !IsPlayerAlive(client)) return Plugin_Continue;
 
-    if (g_bMindControlled[client]) {
-        // Контроль сознания: случайная инверсия кнопок и направления
-        int originalButtons = buttons;
-        int newButtons = buttons;
-
-        newButtons &= ~(IN_FORWARD | IN_BACK | IN_MOVELEFT | IN_MOVERIGHT);
-
-        if (originalButtons & IN_FORWARD) {
-            int rand = GetRandomInt(0, 3);
-            if (rand == 0) newButtons |= IN_BACK;
-            else if (rand == 1) newButtons |= IN_MOVELEFT;
-            else if (rand == 2) newButtons |= IN_MOVERIGHT;
-            else newButtons |= IN_FORWARD;
-        }
-        if (originalButtons & IN_BACK) {
-            int rand = GetRandomInt(0, 3);
-            if (rand == 0) newButtons |= IN_FORWARD;
-            else if (rand == 1) newButtons |= IN_MOVELEFT;
-            else if (rand == 2) newButtons |= IN_MOVERIGHT;
-            else newButtons |= IN_BACK;
-        }
-        if (originalButtons & IN_MOVELEFT) {
-            int rand = GetRandomInt(0, 3);
-            if (rand == 0) newButtons |= IN_MOVERIGHT;
-            else if (rand == 1) newButtons |= IN_FORWARD;
-            else if (rand == 2) newButtons |= IN_BACK;
-            else newButtons |= IN_MOVELEFT;
-        }
-        if (originalButtons & IN_MOVERIGHT) {
-            int rand = GetRandomInt(0, 3);
-            if (rand == 0) newButtons |= IN_MOVELEFT;
-            else if (rand == 1) newButtons |= IN_FORWARD;
-            else if (rand == 2) newButtons |= IN_BACK;
-            else newButtons |= IN_MOVERIGHT;
-        }
-
-        buttons = newButtons;
-        return Plugin_Changed;
-    }
-
-    if (client != g_iBossClient) return Plugin_Continue;
-
-    // --- Логика движения Босса ---
-    float speedMult = 1.3;
-    if (g_bRageActive) speedMult = 1.6;
-    if (g_bFinalPhaseActive) speedMult = 1.9;
+    float speedMult = 1.0;
+    if (g_bRageActive) speedMult = 1.5;
+    if (g_bFinalPhaseActive) speedMult = 2.0;
     SetEntPropFloat(client, Prop_Send, "m_flVelocityModifier", speedMult);
 
-    int target = GetNearestPlayer(client);
-    if (target != -1) {
-        float bPos[3], tPos[3], dir[3], ang[3];
-        GetClientEyePosition(client, bPos);
-        GetClientEyePosition(target, tPos);
-
-        SubtractVectors(tPos, bPos, dir);
-        float dist = GetVectorLength(dir);
-
-        GetVectorAngles(dir, ang);
-        angles[0] = ang[0];
-        angles[1] = ang[1];
-        angles[2] = 0.0;
-
-        TeleportEntity(client, NULL_VECTOR, angles, NULL_VECTOR);
-
-        vel[0] = 300.0 * speedMult;
-        buttons |= IN_FORWARD;
-
-        if (dist < 100.0) {
-            buttons |= IN_ATTACK;
-            if (GetEngineTime() - g_flLastAttackTime >= 1.0) {
+    if (g_bBossActive && g_iBossClient == client) {
+        int target = GetNearestPlayer(client);
+        if (target != -1) {
+            float bPos[3], tPos[3];
+            GetClientEyePosition(client, bPos);
+            GetClientEyePosition(target, tPos);
+            if (GetVectorDistance(bPos, tPos) < 100.0 && GetEngineTime() - g_flLastAttackTime >= 1.0) {
                 float dmgValue = 500.0 + (g_iBossRarity * 200.0) + (g_iSoulStealKills * 50.0);
                 if (g_bRageActive) dmgValue *= 1.5;
                 SDKHooks_TakeDamage(target, client, client, dmgValue, DMG_CLUB);
                 g_flLastAttackTime = GetEngineTime();
             }
         }
-        return Plugin_Changed;
     }
     return Plugin_Continue;
 }
 
-public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype, int &weapon, float damageForce[3], float damagePosition[3]) {
+public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype) {
     if (!g_bBossActive || victim != g_iBossClient) return Plugin_Continue;
     if (damagetype & DMG_FALL) return Plugin_Handled;
     if (damage <= 0.0) return Plugin_Continue;
 
-    if (g_bFinalPhaseActive) damage *= 0.5;
+    float dmgDealt = damage;
+    if (g_bFinalPhaseActive) dmgDealt *= 0.5;
 
-    // Блокируем замедление/отбрасывание
-    damageForce[0] = 0.0;
-    damageForce[1] = 0.0;
-    damageForce[2] = 0.0;
-
-    return Plugin_Changed;
-}
-
-public void OnTakeDamagePost(int victim, int attacker, int inflictor, float damage, int damagetype, int weapon, const float damageForce[3], const float damagePosition[3], int damagecustom) {
-    if (!g_bBossActive || victim != g_iBossClient) return;
-
-    int currentHP = GetClientHealth(victim);
+    g_iBossHP -= RoundFloat(dmgDealt);
     if (attacker > 0 && attacker <= MaxClients && !IsFakeClient(attacker)) {
         g_bPlayerParticipated[attacker] = true;
-        PrintCenterText(attacker, "УРОН ПО БОССУ: -%d | ОСТАЛОСЬ: %d", RoundFloat(damage), currentHP);
+        PrintCenterText(attacker, "УРОН ПО БОССУ: -%d | ОСТАЛОСЬ: %d", RoundFloat(dmgDealt), g_iBossHP);
 
-        g_iDamageCounter[attacker] += RoundFloat(damage);
+        g_iDamageCounter[attacker] += RoundFloat(dmgDealt);
         if (g_iDamageCounter[attacker] >= 5000) {
             g_iDamageCounter[attacker] -= 5000;
             if (GetRandomFloat(0.0, 100.0) <= GetBossDropChance(g_iBossRarity)) GiveRandomResource(attacker);
         }
     }
-    CheckUltimates(currentHP);
+
+    CheckUltimates();
+
+    if (g_iBossHP <= 0) {
+        damage = 99999999.0;
+        return Plugin_Changed;
+    } else {
+        SetEntityHealth(victim, 99999999);
+        return Plugin_Continue;
+    }
 }
 
-void CheckUltimates(int currentHP) {
-    float hpPct = float(currentHP) / float(g_iBossMaxHP);
+void CheckUltimates() {
+    float hpPct = float(g_iBossHP) / float(g_iBossMaxHP);
     if (hpPct <= 0.5 && !g_bSnapUsed) { g_bSnapUsed = true; Skill_Snap(); }
-    if (hpPct <= 0.3 && !g_bRageActive) { g_bRageActive = true; PrintToChatAll(" \x04[Танос] \x02ЯРОСТЬ ТИТАНА! Скорость увеличена!"); }
+    if (hpPct <= 0.3 && !g_bRageActive) { g_bRageActive = true; PrintToChatAll(" \\x04[Танос] \\x02ЯРОСТЬ ТИТАНА! Урон и скорость увеличены!"); }
     if (hpPct <= 0.1 && !g_bFinalPhaseActive) {
         g_bFinalPhaseActive = true;
-        PrintToChatAll(" \x04[Танос] \x02Я НЕИЗБЕЖЕН!");
+        PrintToChatAll(" \\x04[Танос] \\x02Я НЕИЗБЕЖЕН!");
         if (g_hSkillTimer != null) KillTimer(g_hSkillTimer);
         g_hSkillTimer = CreateTimer(7.0, Timer_PrepareSkill, _, TIMER_REPEAT);
     }
@@ -366,7 +301,7 @@ public Action Timer_SkillCountdown(Handle timer) {
 
     SetHudTextParams(-1.0, 0.4, 1.1, 255, 0, 0, 255, 0, 0.0, 0.0, 0.0);
     for (int i = 1; i <= MaxClients; i++) {
-        if (IsClientInGame(i) && !IsFakeClient(i)) ShowSyncHudText(i, g_hHudSync, "ТАНОС ИСПОЛЬЗУЕТ: %s\nЧерез %d сек!", sSkillName, g_iWarningCount);
+        if (IsClientInGame(i) && !IsFakeClient(i)) ShowSyncHudText(i, g_hHudSync, "ТАНОС ИСПОЛЬЗУЕТ: %s\\nЧерез %d сек!", sSkillName, g_iWarningCount);
     }
     g_iWarningCount--;
     return Plugin_Continue;
@@ -415,39 +350,27 @@ void Skill_Teleport() {
 }
 
 void Skill_Reality() {
-    PrintToChatAll(" \x04[Танос] \x02Искажение Реальности!");
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && IsPlayerAlive(i) && i != g_iBossClient) {
-            SetEntProp(i, Prop_Send, "m_iDefaultFOV", 140);
-            CreateTimer(7.0, Timer_RemoveReality, GetClientUserId(i));
+            ClientCommand(i, "r_screenoverlay \\"effects/tp_eyefx/tpeye.vmt\\"");
+            CreateTimer(10.0, Timer_RemoveOverlay, GetClientUserId(i));
         }
     }
 }
 
-public Action Timer_RemoveReality(Handle timer, any userid) {
+public Action Timer_RemoveOverlay(Handle timer, any userid) {
     int client = GetClientOfUserId(userid);
-    if (client && IsClientInGame(client)) {
-        SetEntProp(client, Prop_Send, "m_iDefaultFOV", 90);
-    }
+    if (client && IsClientInGame(client)) ClientCommand(client, "r_screenoverlay \\"\\"");
     return Plugin_Stop;
 }
 
 void Skill_MindControl() {
-    PrintToChatAll(" \x04[Танос] \x02Контроль Сознания!");
     for (int i = 1; i <= MaxClients; i++) {
-        if (IsClientInGame(i) && IsPlayerAlive(i) && i != g_iBossClient) {
-            if (GetRandomInt(1, 2) == 1) {
-                g_bMindControlled[i] = true;
-                CreateTimer(5.0, Timer_RemoveMindControl, GetClientUserId(i));
-            }
+        if (IsClientInGame(i) && IsPlayerAlive(i) && i != g_iBossClient && GetRandomInt(1, 2) == 1) {
+            SetEntPropFloat(i, Prop_Send, "m_flFlashDuration", 5.0);
+            SetEntPropFloat(i, Prop_Send, "m_flFlashMaxAlpha", 255.0);
         }
     }
-}
-
-public Action Timer_RemoveMindControl(Handle timer, any userid) {
-    int client = GetClientOfUserId(userid);
-    if (client && IsClientInGame(client)) g_bMindControlled[client] = false;
-    return Plugin_Stop;
 }
 
 void Skill_TimeRewind() {
@@ -463,9 +386,10 @@ void Skill_TimeRewind() {
 }
 
 void Skill_Snap() {
-    PrintToChatAll(" \x04[Танос] \x02*Щелчок*");
+    PrintToChatAll(" \\x04[Танос] \\x02*Щелчок*");
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && IsPlayerAlive(i) && i != g_iBossClient) {
+            // 50% шанс мгновенной смерти для каждого игрока
             if (GetRandomInt(1, 2) == 1) {
                 float pPos[3]; GetClientAbsOrigin(i, pPos);
                 TE_SetupSmoke(pPos, g_iSmokeModel, 50.0, 5); TE_SendToAll();
@@ -476,45 +400,14 @@ void Skill_Snap() {
 }
 
 void Skill_CosmicRift() {
-    for(int i=0; i<3; i++) {
+    for(int i=0; i<5; i++) {
         int target = GetRandomPlayer();
         if (target != -1) {
             float pPos[3]; GetClientAbsOrigin(target, pPos);
-            TE_SetupBeamRingPoint(pPos, 10.0, 300.0, g_iLaserModel, g_iHaloModel, 0, 10, 2.0, 30.0, 0.0, {128, 0, 128, 255}, 10, 0);
+            TE_SetupBeamRingPoint(pPos, 10.0, 200.0, g_iLaserModel, g_iHaloModel, 0, 10, 2.0, 10.0, 0.0, {255, 0, 0, 255}, 10, 0);
             TE_SendToAll();
-
-            DataPack pack = new DataPack();
-            pack.WriteFloat(pPos[0]);
-            pack.WriteFloat(pPos[1]);
-            pack.WriteFloat(pPos[2]);
-            CreateTimer(2.0, Timer_RiftDamage, pack);
         }
     }
-}
-
-public Action Timer_RiftDamage(Handle timer, DataPack pack) {
-    pack.Reset();
-    float pPos[3];
-    pPos[0] = pack.ReadFloat();
-    pPos[1] = pack.ReadFloat();
-    pPos[2] = pack.ReadFloat();
-    delete pack;
-
-    TE_SetupSmoke(pPos, g_iSmokeModel, 300.0, 10);
-    TE_SendToAll();
-
-    for (int j = 1; j <= MaxClients; j++) {
-        if (IsClientInGame(j) && IsPlayerAlive(j) && j != g_iBossClient) {
-            float victimPos[3]; GetClientAbsOrigin(j, victimPos);
-            if (GetVectorDistance(pPos, victimPos) <= 300.0) {
-                SDKHooks_TakeDamage(j, g_iBossClient, g_iBossClient, 600.0, DMG_BLAST);
-                float dir[3]; SubtractVectors(victimPos, pPos, dir);
-                NormalizeVector(dir, dir); ScaleVector(dir, 800.0); dir[2] = 400.0;
-                TeleportEntity(j, NULL_VECTOR, NULL_VECTOR, dir);
-            }
-        }
-    }
-    return Plugin_Stop;
 }
 
 public Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast) {
@@ -532,22 +425,9 @@ public Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadca
 public Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast) {
     int client = GetClientOfUserId(event.GetInt("userid"));
     if (g_bBossActive && client == g_iBossClient) {
-        StripAllWeapons(client);
-        GivePlayerItem(client, "weapon_knife");
-        SetEntityModel(client, g_sBossModel);
-
-        CreateTimer(0.2, Timer_SetBossHealth, GetClientUserId(client));
+        StripAllWeapons(client); GivePlayerItem(client, "weapon_knife"); SetEntityModel(client, g_sBossModel);
     }
     return Plugin_Continue;
-}
-
-public Action Timer_SetBossHealth(Handle timer, any userid) {
-    int client = GetClientOfUserId(userid);
-    if (client && IsClientInGame(client) && g_bBossActive && client == g_iBossClient) {
-        SetEntProp(client, Prop_Data, "m_iMaxHealth", g_iBossMaxHP);
-        SetEntityHealth(client, g_iBossMaxHP);
-    }
-    return Plugin_Stop;
 }
 
 void EndBossFight() {
@@ -602,13 +482,13 @@ public Action Timer_UpdateHud(Handle timer) {
 
     SetHudTextParams(0.02, 0.05, 0.6, 255, 255, 255, 255);
     for (int i = 1; i <= MaxClients; i++) {
-        if (IsClientInGame(i) && !IsFakeClient(i)) ShowSyncHudText(i, g_hHudSync, "ТАНОС [%s]\nХП: %d / %d\nОсталось: %02d:%02d", rName, currentHP, g_iBossMaxHP, timeLeft / 60, timeLeft % 60);
+        if (IsClientInGame(i) && !IsFakeClient(i)) ShowSyncHudText(i, g_hHudSync, "ТАНОС [%s]\\nХП: %d / %d\\nОсталось: %02d:%02d", rName, g_iBossHP, g_iBossMaxHP, timeLeft / 60, timeLeft % 60);
     }
     return Plugin_Continue;
 }
 
 int GetNearestPlayer(int bossEntity) {
-    int nearest = -1; float minDist = 99999.0; float bPos[3]; GetClientAbsOrigin(bossEntity, bPos);
+    int nearest = -1; float minDist = 9999.0; float bPos[3]; GetClientAbsOrigin(bossEntity, bPos);
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && IsPlayerAlive(i) && i != bossEntity && !IsFakeClient(i)) {
             float pPos[3]; GetClientAbsOrigin(i, pPos);
@@ -621,7 +501,7 @@ int GetNearestPlayer(int bossEntity) {
 
 int GetRandomPlayer() {
     int[] players = new int[MaxClients]; int count = 0;
-    for (int i = 1; i <= MaxClients; i++) if (IsClientInGame(i) && !IsFakeClient(i) && IsPlayerAlive(i)) players[count++] = i;
+    for (int i = 1; i <= MaxClients; i++) if (IsClientInGame(i) && !IsFakeClient(i)) players[count++] = i;
     if (count > 0) return players[GetRandomInt(0, count - 1)];
     return -1;
 }
@@ -657,26 +537,7 @@ float GetBossDropChance(int rarity) {
     delete kv;
     return chance;
 }
+"""
 
-int GetBossConfigHP(int rarity) {
-    char path[PLATFORM_MAX_PATH];
-    BuildPath(Path_SM, path, sizeof(path), "configs/rpg_boss_drops.txt");
-
-    KeyValues kv = new KeyValues("BossDrops");
-    if (!kv.ImportFromFile(path)) {
-        delete kv;
-        switch (rarity) {
-            case 0: return 500000;
-            case 1: return 1500000;
-            case 2: return 3000000;
-            case 3: return 8000000;
-        }
-        return 500000;
-    }
-
-    char key[16];
-    Format(key, sizeof(key), "hp_%d", rarity);
-    int hp = kv.GetNum(key, 500000);
-    delete kv;
-    return hp;
-}
+with open("ФАйлы сервера кс го/rpg_boss_system.sp", "w", encoding="utf-8") as f:
+    f.write(full_code)

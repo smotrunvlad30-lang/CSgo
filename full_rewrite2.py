@@ -1,4 +1,6 @@
-#pragma semicolon 1
+import re
+
+code = """#pragma semicolon 1
 #pragma newdecls required
 
 #include <sourcemod>
@@ -24,6 +26,7 @@ Handle g_hHudSync = null;
 Handle g_hSkillTimer = null;
 Handle g_hWarningTimer = null;
 
+int g_iBossHP = 0;
 int g_iBossMaxHP = 0;
 float g_flBossEndTime = 0.0;
 float g_flLastAttackTime = 0.0;
@@ -79,11 +82,11 @@ public void OnMapEnd() {
 
 public void OnClientPutInServer(int client) {
     SDKHook(client, SDKHook_OnTakeDamage, OnTakeDamage);
-    SDKHook(client, SDKHook_OnTakeDamagePost, OnTakeDamagePost);
     g_iDamageCounter[client] = 0;
     g_bPlayerParticipated[client] = false;
     g_bMindControlled[client] = false;
 }
+
 public Action Timer_CheckTime(Handle timer) {
     if (!g_bBossActive) {
         char sHour[4], sMinute[4];
@@ -156,7 +159,8 @@ public Action Timer_SetupBot(Handle timer, any userid) {
 }
 
 void SetupBoss(int client) {
-    g_iBossMaxHP = GetBossConfigHP(g_iBossRarity);
+    g_iBossHP = GetBossConfigHP(g_iBossRarity);
+    g_iBossMaxHP = g_iBossHP;
     g_flBossEndTime = GetEngineTime() + 600.0;
 
     g_iTimeRewindCount = 0; g_bSnapUsed = false; g_bRageActive = false; g_bFinalPhaseActive = false; g_iSoulStealKills = 0;
@@ -166,6 +170,7 @@ void SetupBoss(int client) {
         g_iDamageCounter[i] = 0;
         g_bMindControlled[i] = false;
 
+        // Переводим всех игроков за CT
         if (IsClientInGame(i) && !IsFakeClient(i) && i != client) {
             ChangeClientTeam(i, CS_TEAM_CT);
             CS_RespawnPlayer(i);
@@ -174,6 +179,7 @@ void SetupBoss(int client) {
 
     SetEntityModel(client, g_sBossModel);
 
+    // Даем боту реальное ХП
     SetEntProp(client, Prop_Data, "m_iMaxHealth", g_iBossMaxHP);
     SetEntityHealth(client, g_iBossMaxHP);
 
@@ -186,8 +192,9 @@ void SetupBoss(int client) {
 
     ServerCommand("mp_ignore_round_win_conditions 1");
 
-    PrintToChatAll(" \x04[RPG] \x02БОСС ТАНОС ПОЯВИЛСЯ! ВСЕ ПЕРЕВЕДЕНЫ ЗА CT. У ВАС 10 МИНУТ!");
+    PrintToChatAll(" \\x04[RPG] \\x02БОСС ТАНОС ПОЯВИЛСЯ! ВСЕ ПЕРЕВЕДЕНЫ ЗА CT. У ВАС 10 МИНУТ!");
 }
+
 void StripAllWeapons(int client) {
     int weapon;
     for (int i = 0; i < 5; i++) {
@@ -293,25 +300,21 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype, int &weapon, float damageForce[3], float damagePosition[3]) {
     if (!g_bBossActive || victim != g_iBossClient) return Plugin_Continue;
     if (damagetype & DMG_FALL) return Plugin_Handled;
+
     if (damage <= 0.0) return Plugin_Continue;
 
     if (g_bFinalPhaseActive) damage *= 0.5;
 
-    // Блокируем замедление/отбрасывание
+    // Обнуляем вектор отталкивания, чтобы босса нельзя было замедлить/оттолкнуть
     damageForce[0] = 0.0;
     damageForce[1] = 0.0;
     damageForce[2] = 0.0;
 
-    return Plugin_Changed;
-}
+    g_iBossHP -= RoundFloat(damage);
 
-public void OnTakeDamagePost(int victim, int attacker, int inflictor, float damage, int damagetype, int weapon, const float damageForce[3], const float damagePosition[3], int damagecustom) {
-    if (!g_bBossActive || victim != g_iBossClient) return;
-
-    int currentHP = GetClientHealth(victim);
     if (attacker > 0 && attacker <= MaxClients && !IsFakeClient(attacker)) {
         g_bPlayerParticipated[attacker] = true;
-        PrintCenterText(attacker, "УРОН ПО БОССУ: -%d | ОСТАЛОСЬ: %d", RoundFloat(damage), currentHP);
+        PrintCenterText(attacker, "УРОН ПО БОССУ: -%d | ОСТАЛОСЬ: %d", RoundFloat(damage), g_iBossHP);
 
         g_iDamageCounter[attacker] += RoundFloat(damage);
         if (g_iDamageCounter[attacker] >= 5000) {
@@ -319,16 +322,27 @@ public void OnTakeDamagePost(int victim, int attacker, int inflictor, float dama
             if (GetRandomFloat(0.0, 100.0) <= GetBossDropChance(g_iBossRarity)) GiveRandomResource(attacker);
         }
     }
-    CheckUltimates(currentHP);
+
+    CheckUltimates();
+
+    if (g_iBossHP <= 0) {
+        g_iBossHP = 0;
+        damage = 9999999.0;
+        return Plugin_Changed;
+    }
+
+    // Блокируем движковый урон, чтобы предотвратить дергание,
+    // но ХП из нашей переменной мы уже вычли.
+    return Plugin_Handled;
 }
 
-void CheckUltimates(int currentHP) {
-    float hpPct = float(currentHP) / float(g_iBossMaxHP);
+void CheckUltimates() {
+    float hpPct = float(g_iBossHP) / float(g_iBossMaxHP);
     if (hpPct <= 0.5 && !g_bSnapUsed) { g_bSnapUsed = true; Skill_Snap(); }
-    if (hpPct <= 0.3 && !g_bRageActive) { g_bRageActive = true; PrintToChatAll(" \x04[Танос] \x02ЯРОСТЬ ТИТАНА! Скорость увеличена!"); }
+    if (hpPct <= 0.3 && !g_bRageActive) { g_bRageActive = true; PrintToChatAll(" \\x04[Танос] \\x02ЯРОСТЬ ТИТАНА! Скорость увеличена!"); }
     if (hpPct <= 0.1 && !g_bFinalPhaseActive) {
         g_bFinalPhaseActive = true;
-        PrintToChatAll(" \x04[Танос] \x02Я НЕИЗБЕЖЕН!");
+        PrintToChatAll(" \\x04[Танос] \\x02Я НЕИЗБЕЖЕН!");
         if (g_hSkillTimer != null) KillTimer(g_hSkillTimer);
         g_hSkillTimer = CreateTimer(7.0, Timer_PrepareSkill, _, TIMER_REPEAT);
     }
@@ -366,7 +380,7 @@ public Action Timer_SkillCountdown(Handle timer) {
 
     SetHudTextParams(-1.0, 0.4, 1.1, 255, 0, 0, 255, 0, 0.0, 0.0, 0.0);
     for (int i = 1; i <= MaxClients; i++) {
-        if (IsClientInGame(i) && !IsFakeClient(i)) ShowSyncHudText(i, g_hHudSync, "ТАНОС ИСПОЛЬЗУЕТ: %s\nЧерез %d сек!", sSkillName, g_iWarningCount);
+        if (IsClientInGame(i) && !IsFakeClient(i)) ShowSyncHudText(i, g_hHudSync, "ТАНОС ИСПОЛЬЗУЕТ: %s\\nЧерез %d сек!", sSkillName, g_iWarningCount);
     }
     g_iWarningCount--;
     return Plugin_Continue;
@@ -415,7 +429,7 @@ void Skill_Teleport() {
 }
 
 void Skill_Reality() {
-    PrintToChatAll(" \x04[Танос] \x02Искажение Реальности!");
+    PrintToChatAll(" \\x04[Танос] \\x02Искажение Реальности!");
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && IsPlayerAlive(i) && i != g_iBossClient) {
             SetEntProp(i, Prop_Send, "m_iDefaultFOV", 140);
@@ -433,7 +447,7 @@ public Action Timer_RemoveReality(Handle timer, any userid) {
 }
 
 void Skill_MindControl() {
-    PrintToChatAll(" \x04[Танос] \x02Контроль Сознания!");
+    PrintToChatAll(" \\x04[Танос] \\x02Контроль Сознания!");
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && IsPlayerAlive(i) && i != g_iBossClient) {
             if (GetRandomInt(1, 2) == 1) {
@@ -463,7 +477,7 @@ void Skill_TimeRewind() {
 }
 
 void Skill_Snap() {
-    PrintToChatAll(" \x04[Танос] \x02*Щелчок*");
+    PrintToChatAll(" \\x04[Танос] \\x02*Щелчок*");
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && IsPlayerAlive(i) && i != g_iBossClient) {
             if (GetRandomInt(1, 2) == 1) {
@@ -602,7 +616,7 @@ public Action Timer_UpdateHud(Handle timer) {
 
     SetHudTextParams(0.02, 0.05, 0.6, 255, 255, 255, 255);
     for (int i = 1; i <= MaxClients; i++) {
-        if (IsClientInGame(i) && !IsFakeClient(i)) ShowSyncHudText(i, g_hHudSync, "ТАНОС [%s]\nХП: %d / %d\nОсталось: %02d:%02d", rName, currentHP, g_iBossMaxHP, timeLeft / 60, timeLeft % 60);
+        if (IsClientInGame(i) && !IsFakeClient(i)) ShowSyncHudText(i, g_hHudSync, "ТАНОС [%s]\\nХП: %d / %d\\nОсталось: %02d:%02d", rName, g_iBossHP, g_iBossMaxHP, timeLeft / 60, timeLeft % 60);
     }
     return Plugin_Continue;
 }
@@ -680,3 +694,6 @@ int GetBossConfigHP(int rarity) {
     delete kv;
     return hp;
 }
+"""
+with open("ФАйлы сервера кс го/rpg_boss_system.sp", "w", encoding="utf-8") as f:
+    f.write(code)

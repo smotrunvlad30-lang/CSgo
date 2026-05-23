@@ -1,4 +1,6 @@
-#pragma semicolon 1
+import re
+
+code = """#pragma semicolon 1
 #pragma newdecls required
 
 #include <sourcemod>
@@ -10,7 +12,7 @@ public Plugin myinfo = {
     name = "RPG Boss Thanos - Custom Raid Edition",
     author = "Skvirt (modified)",
     description = "Thanos Boss: Auto-spawn Bot, skills, ultimates, visuals.",
-    version = "45.0"
+    version = "44.0"
 };
 
 Database g_dDatabase = null;
@@ -39,6 +41,7 @@ bool g_bRageActive = false;
 bool g_bFinalPhaseActive = false;
 int g_iSoulStealKills = 0;
 bool g_bMindControlled[MAXPLAYERS + 1];
+int g_iMindControlType[MAXPLAYERS + 1];
 
 int g_iLaserModel = -1;
 int g_iHaloModel = -1;
@@ -79,11 +82,11 @@ public void OnMapEnd() {
 
 public void OnClientPutInServer(int client) {
     SDKHook(client, SDKHook_OnTakeDamage, OnTakeDamage);
-    SDKHook(client, SDKHook_OnTakeDamagePost, OnTakeDamagePost);
     g_iDamageCounter[client] = 0;
     g_bPlayerParticipated[client] = false;
     g_bMindControlled[client] = false;
 }
+
 public Action Timer_CheckTime(Handle timer) {
     if (!g_bBossActive) {
         char sHour[4], sMinute[4];
@@ -166,6 +169,7 @@ void SetupBoss(int client) {
         g_iDamageCounter[i] = 0;
         g_bMindControlled[i] = false;
 
+        // Переводим всех игроков за CT
         if (IsClientInGame(i) && !IsFakeClient(i) && i != client) {
             ChangeClientTeam(i, CS_TEAM_CT);
             CS_RespawnPlayer(i);
@@ -174,6 +178,7 @@ void SetupBoss(int client) {
 
     SetEntityModel(client, g_sBossModel);
 
+    // Даем боту реальное ХП
     SetEntProp(client, Prop_Data, "m_iMaxHealth", g_iBossMaxHP);
     SetEntityHealth(client, g_iBossMaxHP);
 
@@ -186,8 +191,9 @@ void SetupBoss(int client) {
 
     ServerCommand("mp_ignore_round_win_conditions 1");
 
-    PrintToChatAll(" \x04[RPG] \x02БОСС ТАНОС ПОЯВИЛСЯ! ВСЕ ПЕРЕВЕДЕНЫ ЗА CT. У ВАС 10 МИНУТ!");
+    PrintToChatAll(" \\x04[RPG] \\x02БОСС ТАНОС ПОЯВИЛСЯ! ВСЕ ПЕРЕВЕДЕНЫ ЗА CT. У ВАС 10 МИНУТ!");
 }
+
 void StripAllWeapons(int client) {
     int weapon;
     for (int i = 0; i < 5; i++) {
@@ -211,40 +217,24 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 
     if (g_bMindControlled[client]) {
         // Контроль сознания: случайная инверсия кнопок и направления
-        int originalButtons = buttons;
+        int type = g_iMindControlType[client];
         int newButtons = buttons;
 
-        newButtons &= ~(IN_FORWARD | IN_BACK | IN_MOVELEFT | IN_MOVERIGHT);
-
-        if (originalButtons & IN_FORWARD) {
-            int rand = GetRandomInt(0, 3);
-            if (rand == 0) newButtons |= IN_BACK;
-            else if (rand == 1) newButtons |= IN_MOVELEFT;
-            else if (rand == 2) newButtons |= IN_MOVERIGHT;
-            else newButtons |= IN_FORWARD;
+        if (type == 0) { // Полный реверс
+            vel[0] = -vel[0]; vel[1] = -vel[1];
+            if (buttons & IN_FORWARD) { newButtons &= ~IN_FORWARD; newButtons |= IN_BACK; }
+            else if (buttons & IN_BACK) { newButtons &= ~IN_BACK; newButtons |= IN_FORWARD; }
+            if (buttons & IN_MOVELEFT) { newButtons &= ~IN_MOVELEFT; newButtons |= IN_MOVERIGHT; }
+            else if (buttons & IN_MOVERIGHT) { newButtons &= ~IN_MOVERIGHT; newButtons |= IN_MOVELEFT; }
+        } else if (type == 1) { // Лево это право, право это лево
+            vel[1] = -vel[1];
+            if (buttons & IN_MOVELEFT) { newButtons &= ~IN_MOVELEFT; newButtons |= IN_MOVERIGHT; }
+            else if (buttons & IN_MOVERIGHT) { newButtons &= ~IN_MOVERIGHT; newButtons |= IN_MOVELEFT; }
+        } else { // Вперед это назад
+            vel[0] = -vel[0];
+            if (buttons & IN_FORWARD) { newButtons &= ~IN_FORWARD; newButtons |= IN_BACK; }
+            else if (buttons & IN_BACK) { newButtons &= ~IN_BACK; newButtons |= IN_FORWARD; }
         }
-        if (originalButtons & IN_BACK) {
-            int rand = GetRandomInt(0, 3);
-            if (rand == 0) newButtons |= IN_FORWARD;
-            else if (rand == 1) newButtons |= IN_MOVELEFT;
-            else if (rand == 2) newButtons |= IN_MOVERIGHT;
-            else newButtons |= IN_BACK;
-        }
-        if (originalButtons & IN_MOVELEFT) {
-            int rand = GetRandomInt(0, 3);
-            if (rand == 0) newButtons |= IN_MOVERIGHT;
-            else if (rand == 1) newButtons |= IN_FORWARD;
-            else if (rand == 2) newButtons |= IN_BACK;
-            else newButtons |= IN_MOVELEFT;
-        }
-        if (originalButtons & IN_MOVERIGHT) {
-            int rand = GetRandomInt(0, 3);
-            if (rand == 0) newButtons |= IN_MOVELEFT;
-            else if (rand == 1) newButtons |= IN_FORWARD;
-            else if (rand == 2) newButtons |= IN_BACK;
-            else newButtons |= IN_MOVERIGHT;
-        }
-
         buttons = newButtons;
         return Plugin_Changed;
     }
@@ -293,25 +283,21 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype, int &weapon, float damageForce[3], float damagePosition[3]) {
     if (!g_bBossActive || victim != g_iBossClient) return Plugin_Continue;
     if (damagetype & DMG_FALL) return Plugin_Handled;
+
     if (damage <= 0.0) return Plugin_Continue;
 
     if (g_bFinalPhaseActive) damage *= 0.5;
 
-    // Блокируем замедление/отбрасывание
+    // Обнуляем вектор отталкивания, чтобы босса нельзя было замедлить/оттолкнуть пулеметами
     damageForce[0] = 0.0;
     damageForce[1] = 0.0;
     damageForce[2] = 0.0;
 
-    return Plugin_Changed;
-}
-
-public void OnTakeDamagePost(int victim, int attacker, int inflictor, float damage, int damagetype, int weapon, const float damageForce[3], const float damagePosition[3], int damagecustom) {
-    if (!g_bBossActive || victim != g_iBossClient) return;
-
     int currentHP = GetClientHealth(victim);
+
     if (attacker > 0 && attacker <= MaxClients && !IsFakeClient(attacker)) {
         g_bPlayerParticipated[attacker] = true;
-        PrintCenterText(attacker, "УРОН ПО БОССУ: -%d | ОСТАЛОСЬ: %d", RoundFloat(damage), currentHP);
+        PrintCenterText(attacker, "УРОН ПО БОССУ: -%d | ОСТАЛОСЬ: %d", RoundFloat(damage), currentHP - RoundFloat(damage));
 
         g_iDamageCounter[attacker] += RoundFloat(damage);
         if (g_iDamageCounter[attacker] >= 5000) {
@@ -319,16 +305,18 @@ public void OnTakeDamagePost(int victim, int attacker, int inflictor, float dama
             if (GetRandomFloat(0.0, 100.0) <= GetBossDropChance(g_iBossRarity)) GiveRandomResource(attacker);
         }
     }
+
     CheckUltimates(currentHP);
+    return Plugin_Changed;
 }
 
 void CheckUltimates(int currentHP) {
     float hpPct = float(currentHP) / float(g_iBossMaxHP);
     if (hpPct <= 0.5 && !g_bSnapUsed) { g_bSnapUsed = true; Skill_Snap(); }
-    if (hpPct <= 0.3 && !g_bRageActive) { g_bRageActive = true; PrintToChatAll(" \x04[Танос] \x02ЯРОСТЬ ТИТАНА! Скорость увеличена!"); }
+    if (hpPct <= 0.3 && !g_bRageActive) { g_bRageActive = true; PrintToChatAll(" \\x04[Танос] \\x02ЯРОСТЬ ТИТАНА! Скорость увеличена!"); }
     if (hpPct <= 0.1 && !g_bFinalPhaseActive) {
         g_bFinalPhaseActive = true;
-        PrintToChatAll(" \x04[Танос] \x02Я НЕИЗБЕЖЕН!");
+        PrintToChatAll(" \\x04[Танос] \\x02Я НЕИЗБЕЖЕН!");
         if (g_hSkillTimer != null) KillTimer(g_hSkillTimer);
         g_hSkillTimer = CreateTimer(7.0, Timer_PrepareSkill, _, TIMER_REPEAT);
     }
@@ -366,7 +354,7 @@ public Action Timer_SkillCountdown(Handle timer) {
 
     SetHudTextParams(-1.0, 0.4, 1.1, 255, 0, 0, 255, 0, 0.0, 0.0, 0.0);
     for (int i = 1; i <= MaxClients; i++) {
-        if (IsClientInGame(i) && !IsFakeClient(i)) ShowSyncHudText(i, g_hHudSync, "ТАНОС ИСПОЛЬЗУЕТ: %s\nЧерез %d сек!", sSkillName, g_iWarningCount);
+        if (IsClientInGame(i) && !IsFakeClient(i)) ShowSyncHudText(i, g_hHudSync, "ТАНОС ИСПОЛЬЗУЕТ: %s\\nЧерез %d сек!", sSkillName, g_iWarningCount);
     }
     g_iWarningCount--;
     return Plugin_Continue;
@@ -415,7 +403,7 @@ void Skill_Teleport() {
 }
 
 void Skill_Reality() {
-    PrintToChatAll(" \x04[Танос] \x02Искажение Реальности!");
+    PrintToChatAll(" \\x04[Танос] \\x02Искажение Реальности!");
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && IsPlayerAlive(i) && i != g_iBossClient) {
             SetEntProp(i, Prop_Send, "m_iDefaultFOV", 140);
@@ -433,11 +421,12 @@ public Action Timer_RemoveReality(Handle timer, any userid) {
 }
 
 void Skill_MindControl() {
-    PrintToChatAll(" \x04[Танос] \x02Контроль Сознания!");
+    PrintToChatAll(" \\x04[Танос] \\x02Контроль Сознания!");
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && IsPlayerAlive(i) && i != g_iBossClient) {
             if (GetRandomInt(1, 2) == 1) {
                 g_bMindControlled[i] = true;
+                g_iMindControlType[i] = GetRandomInt(0, 2);
                 CreateTimer(5.0, Timer_RemoveMindControl, GetClientUserId(i));
             }
         }
@@ -452,9 +441,12 @@ public Action Timer_RemoveMindControl(Handle timer, any userid) {
 
 void Skill_TimeRewind() {
     if (g_iTimeRewindCount < 3) {
+        int currentHP = GetClientHealth(g_iBossClient);
         int heal = RoundFloat(g_iBossMaxHP * 0.1);
-        g_iBossHP += heal;
-        if (g_iBossHP > g_iBossMaxHP) g_iBossHP = g_iBossMaxHP;
+        currentHP += heal;
+        if (currentHP > g_iBossMaxHP) currentHP = g_iBossMaxHP;
+        SetEntityHealth(g_iBossClient, currentHP);
+
         g_iTimeRewindCount++;
         float bPos[3]; GetClientAbsOrigin(g_iBossClient, bPos);
         TE_SetupBeamRingPoint(bPos, 10.0, 200.0, g_iLaserModel, g_iHaloModel, 0, 10, 1.0, 20.0, 0.0, {0, 255, 0, 255}, 10, 0);
@@ -463,7 +455,7 @@ void Skill_TimeRewind() {
 }
 
 void Skill_Snap() {
-    PrintToChatAll(" \x04[Танос] \x02*Щелчок*");
+    PrintToChatAll(" \\x04[Танос] \\x02*Щелчок*");
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && IsPlayerAlive(i) && i != g_iBossClient) {
             if (GetRandomInt(1, 2) == 1) {
@@ -601,6 +593,7 @@ public Action Timer_UpdateHud(Handle timer) {
     switch(g_iBossRarity) { case 0: rName = "Обычный"; case 1: rName = "Редкий"; case 2: rName = "Легендарный"; case 3: rName = "МИФИЧЕСКИЙ"; }
 
     SetHudTextParams(0.02, 0.05, 0.6, 255, 255, 255, 255);
+    int currentHP = GetClientHealth(g_iBossClient);
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && !IsFakeClient(i)) ShowSyncHudText(i, g_hHudSync, "ТАНОС [%s]\nХП: %d / %d\nОсталось: %02d:%02d", rName, currentHP, g_iBossMaxHP, timeLeft / 60, timeLeft % 60);
     }
@@ -680,3 +673,6 @@ int GetBossConfigHP(int rarity) {
     delete kv;
     return hp;
 }
+"""
+with open("ФАйлы сервера кс го/rpg_boss_system.sp", "w", encoding="utf-8") as f:
+    f.write(code)

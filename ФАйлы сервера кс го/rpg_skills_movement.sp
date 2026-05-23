@@ -21,7 +21,7 @@ void Movement_OnPlayerSpawn(int client) {
         g_bWasInAir[client] = false;
         g_fFallVelocity[client] = 0.0;
         g_bDidJumpBoost[client] = false;
-        
+
         // Ждем загрузки профиля, чтобы статы не обнулились
         CreateTimer(0.2, Timer_WaitRPG_Movement, GetClientUserId(client), TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
     }
@@ -55,31 +55,31 @@ public Action Timer_ApplyWeaponSpeed(Handle timer, any userid) {
 }
 
 // Рассчитывает значения скорости и гравитации
-void Movement_ApplyStatsFromItems(int client) { 
+void Movement_ApplyStatsFromItems(int client) {
     if (!IsPlayerAlive(client) || !g_bLoaded[client]) return;
 
     // --- 1. СКОРОСТЬ ---
-    int spdLvl = GetSkillLevel(client, "speed");      
+    int spdLvl = GetSkillLevel(client, "speed");
     float spdPower = GetSkillPower("speed");
-    if (spdPower <= 0.0) spdPower = 0.8; 
+    if (spdPower <= 0.0) spdPower = 0.8;
 
     float rpgSpeedBonus = (float(spdLvl) * spdPower) / 100.0;
     float itemSpeedBonus = g_fItem_SpeedPct[client] / 100.0;
-    
+
     g_fSpeedCache[client] = 1.0 + rpgSpeedBonus + itemSpeedBonus;
 
     // --- 2. ГРАВИТАЦИЯ ---
-    int gLvl = GetSkillLevel(client, "grav"); 
+    int gLvl = GetSkillLevel(client, "grav");
     float gravPower = GetSkillPower("grav");
-    if (gravPower <= 0.0) gravPower = 5.0; 
+    if (gravPower <= 0.0) gravPower = 5.0;
 
     float rpgGravReduction = (float(gLvl) * gravPower) / 800.0;
     float itemGravReduction = g_fItem_GravityFlat[client] / 800.0;
-    
+
     g_fGravCache[client] = 1.0 - rpgGravReduction - itemGravReduction;
 
     // Лимиты безопасности
-    if (g_fGravCache[client] < 0.1) g_fGravCache[client] = 0.1; 
+    if (g_fGravCache[client] < 0.1) g_fGravCache[client] = 0.1;
     if (g_fGravCache[client] > 1.0) g_fGravCache[client] = 1.0;
 
     // ПРИНУДИТЕЛЬНО ПРИМЕНЯЕМ СРАЗУ
@@ -90,7 +90,7 @@ void Movement_ApplyStatsFromItems(int client) {
 // Главная функция, которая вызывается каждый игровой тик
 public void Movement_OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2]) {
     #pragma unused impulse, angles, weapon, subtype, cmdnum, tickcount, seed, mouse
-    
+
     if (!IsPlayerAlive(client) || !g_bLoaded[client]) return;
     int flags = GetEntityFlags(client);
 
@@ -115,13 +115,13 @@ public void Movement_OnPlayerRunCmd(int client, int &buttons, int &impulse, floa
     // --- ТЯЖЕЛЫЙ ПРЫЖОК ---
     float currentZVel = GetEntPropFloat(client, Prop_Send, "m_vecVelocity[2]");
     bool bIsOnGround = (flags & FL_ONGROUND) != 0;
-    
+
     if (!bIsOnGround) {
         g_bWasInAir[client] = true;
         if (currentZVel < g_fFallVelocity[client]) {
             g_fFallVelocity[client] = currentZVel;
         }
-    } 
+    }
     else if (bIsOnGround && g_bWasInAir[client]) {
         int heavyLvl = GetSkillLevel(client, "heavy_jmp");
         if (heavyLvl > 0 && g_fFallVelocity[client] < -300.0) {
@@ -129,13 +129,13 @@ public void Movement_OnPlayerRunCmd(int client, int &buttons, int &impulse, floa
             if (heavyPwr <= 0.0) heavyPwr = 1.0;
 
             float fallDmg = float(heavyLvl) * heavyPwr;
-            float myPos[3]; 
+            float myPos[3];
             GetClientAbsOrigin(client, myPos);
             for (int i = 1; i <= MaxClients; i++) {
                 if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) != GetClientTeam(client)) {
                     float targetPos[3];
                     GetClientAbsOrigin(i, targetPos);
-                    
+
                     if (GetVectorDistance(myPos, targetPos) <= 250.0) {
                         SDKHooks_TakeDamage(i, client, client, fallDmg, DMG_CRUSH);
                     }
@@ -180,7 +180,7 @@ void AntiShake_ProcessJump(int client, int buttons, int flags, float vel[3]) {
     // 4. ДЛИННЫЙ ПРЫЖОК (Гладкий метод через vel и TeleportEntity)
     int ljLvl = GetSkillLevel(client, "long_jmp");
     if (!bIsOnGround && bWasOnGround && (buttons & IN_JUMP) && !g_bDidJumpBoost[client]) {
-        
+
         float ljPwr = GetSkillPower("long_jmp");
         if (ljPwr <= 0.0) ljPwr = 1.0;
 
@@ -188,10 +188,10 @@ void AntiShake_ProcessJump(int client, int buttons, int flags, float vel[3]) {
         if (jumpMult > 1.0) {
             float vecVelocity[3];
             GetEntPropVector(client, Prop_Data, "m_vecVelocity", vecVelocity);
-            
+
             vecVelocity[0] *= jumpMult;
             vecVelocity[1] *= jumpMult;
-            
+
             // Лимит скорости, чтобы сервер не крашнулся
             float speedXY = SquareRoot(vecVelocity[0]*vecVelocity[0] + vecVelocity[1]*vecVelocity[1]);
             if (speedXY > 3500.0) {
