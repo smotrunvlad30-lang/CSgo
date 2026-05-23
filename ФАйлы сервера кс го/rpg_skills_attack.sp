@@ -231,12 +231,7 @@ public Action Attack_OnTakeDamage(int victim, int &attacker, int &inflictor, flo
 public Action Timer_BleedTick(Handle timer, any userid) {
     int client = GetClientOfUserId(userid);
     if (client && IsPlayerAlive(client) && GetEngineTime() < g_flBleedTime[client]) {
-        int hp = GetClientHealth(client);
-        if (hp > 5) {
-            SetEntityHealth(client, hp - 5);
-        } else {
-            SDKHooks_TakeDamage(client, 0, 0, 999.0, DMG_GENERIC);
-        }
+        SDKHooks_TakeDamage(client, 0, 0, 5.0, DMG_GENERIC);
         return Plugin_Continue;
     }
     return Plugin_Stop;
