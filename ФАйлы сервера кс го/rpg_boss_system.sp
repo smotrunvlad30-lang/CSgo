@@ -452,9 +452,12 @@ public Action Timer_RemoveMindControl(Handle timer, any userid) {
 
 void Skill_TimeRewind() {
     if (g_iTimeRewindCount < 3) {
+        int currentHP = GetClientHealth(g_iBossClient);
         int heal = RoundFloat(g_iBossMaxHP * 0.1);
-        g_iBossHP += heal;
-        if (g_iBossHP > g_iBossMaxHP) g_iBossHP = g_iBossMaxHP;
+        currentHP += heal;
+        if (currentHP > g_iBossMaxHP) currentHP = g_iBossMaxHP;
+        SetEntityHealth(g_iBossClient, currentHP);
+
         g_iTimeRewindCount++;
         float bPos[3]; GetClientAbsOrigin(g_iBossClient, bPos);
         TE_SetupBeamRingPoint(bPos, 10.0, 200.0, g_iLaserModel, g_iHaloModel, 0, 10, 1.0, 20.0, 0.0, {0, 255, 0, 255}, 10, 0);
@@ -601,6 +604,7 @@ public Action Timer_UpdateHud(Handle timer) {
     switch(g_iBossRarity) { case 0: rName = "Обычный"; case 1: rName = "Редкий"; case 2: rName = "Легендарный"; case 3: rName = "МИФИЧЕСКИЙ"; }
 
     SetHudTextParams(0.02, 0.05, 0.6, 255, 255, 255, 255);
+    int currentHP = GetClientHealth(g_iBossClient);
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && !IsFakeClient(i)) ShowSyncHudText(i, g_hHudSync, "ТАНОС [%s]\nХП: %d / %d\nОсталось: %02d:%02d", rName, currentHP, g_iBossMaxHP, timeLeft / 60, timeLeft % 60);
     }
