@@ -13,10 +13,13 @@ public Plugin myinfo = {
     version = "40.0"
 };
 
+native float RPG_GetItemDropChance(int client);
+native float RPG_GetItemRareDropChance(int client);
+
 Database g_dDatabase = null;
 bool g_bBossActive = false;
 int g_iBossClient = -1;
-int g_iBossRarity = 0; 
+int g_iBossRarity = 0;
 
 Handle g_hHudTimer = null;
 Handle g_hRespawnTimer = null;
@@ -47,15 +50,15 @@ public void OnPluginStart() {
     if (g_dDatabase == null) {
         LogError("[RPG Boss] Ошибка подключения к БД: %s", error);
     }
-    
+
     g_hHudSync = CreateHudSynchronizer();
     CreateTimer(60.0, Timer_CheckTime, _, TIMER_REPEAT);
-    
+
     HookEvent("player_death", Event_PlayerDeath);
-    
-    RegConsoleCmd("sm_bos", Command_BossMenu);
-    RegConsoleCmd("sm_boss", Command_BossMenu);
-    
+    HookEvent("player_spawn", Event_PlayerSpawn);
+
+    RegConsoleCmd("sm_bosik", Command_BossMenu);
+
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i)) {
             SDKHook(i, SDKHook_OnTakeDamage, OnTakeDamage);
@@ -101,7 +104,7 @@ public void OnMapEnd() {
     g_iBossClient = -1;
     if (g_hHudTimer != null) { KillTimer(g_hHudTimer); g_hHudTimer = null; }
     if (g_hRespawnTimer != null) { KillTimer(g_hRespawnTimer); g_hRespawnTimer = null; }
-    
+
     // Возвращаем обычные условия раунда, если карта сменилась во время босса
     ServerCommand("mp_ignore_round_win_conditions 0");
 }
@@ -149,7 +152,7 @@ public int MenuHandler_Boss(Menu menu, MenuAction action, int client, int item) 
 public Action Timer_CheckTime(Handle timer) {
     char sTime[16];
     FormatTime(sTime, sizeof(sTime), "%H:%M");
-    if (StrEqual(sTime, "09:00") || StrEqual(sTime, "12:00") || StrEqual(sTime, "15:00") || 
+    if (StrEqual(sTime, "03:00") || StrEqual(sTime, "06:00") || StrEqual(sTime, "09:00") || StrEqual(sTime, "12:00") || StrEqual(sTime, "15:00") ||
         StrEqual(sTime, "18:00") || StrEqual(sTime, "21:00") || StrEqual(sTime, "00:00")) {
         PrepareBossSpawn(-1);
     }
@@ -180,10 +183,10 @@ void SpawnThanosBot(int bot) {
     g_iBossClient = bot;
     g_flLastAttackTime = GetEngineTime();
     g_flStuckCheckTime = GetEngineTime();
-    
+
     // БОСС ИСЧЕЗНЕТ РОВНО ЧЕРЕЗ 10 МИНУТ (600 СЕКУНД)
     g_flBossEndTime = GetEngineTime() + 600.0;
-    
+
     // Отключаем обычное завершение раунда (по времени карты)
     ServerCommand("mp_ignore_round_win_conditions 1");
 
@@ -204,20 +207,20 @@ void SpawnThanosBot(int bot) {
     SetEntProp(bot, Prop_Data, "m_iMaxHealth", 99999999);
     SetEntityHealth(bot, 99999999);
     SetEntityModel(bot, g_sBossModel);
-    SetEntProp(bot, Prop_Send, "m_bGunGameImmunity", 0); 
+    SetEntProp(bot, Prop_Send, "m_bGunGameImmunity", 0);
     SetEntProp(bot, Prop_Data, "m_takedamage", 2);
     SetEntPropFloat(bot, Prop_Data, "m_flMaxspeed", 500.0);
     GivePlayerItem(bot, "weapon_knife");
     float spawnPos[3];
     if (FindHottestSpawnPoint(spawnPos)) TeleportEntity(bot, spawnPos, NULL_VECTOR, NULL_VECTOR);
-    
+
     // ЗАПУСК ТАЙМЕРОВ (HUD + ВОЗРОЖДЕНИЕ)
     if (g_hHudTimer != null) KillTimer(g_hHudTimer);
     g_hHudTimer = CreateTimer(0.5, Timer_UpdateHud, _, TIMER_REPEAT);
-    
+
     if (g_hRespawnTimer != null) KillTimer(g_hRespawnTimer);
     g_hRespawnTimer = CreateTimer(1.0, Timer_EnforceRules, _, TIMER_REPEAT);
-    
+
     SDKHook(bot, SDKHook_OnTakeDamage, OnTakeDamage);
 
     PrintToChatAll(" \x04[RPG] \x02ВНИМАНИЕ! \x01ТАНОС ПРИБЫЛ!");
@@ -231,16 +234,16 @@ public Action Timer_EnforceRules(Handle timer) {
         g_hRespawnTimer = null;
         return Plugin_Stop;
     }
-    
+
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && !IsFakeClient(i)) {
             int team = GetClientTeam(i);
-            
+
             // Если игрок за Террористов (Т), переводим его за Спецназ (СТ)
             if (team == CS_TEAM_T) {
                 ChangeClientTeam(i, CS_TEAM_CT);
             }
-            
+
             // Если игрок мертв и находится за Спецназ - возрождаем
             if (GetClientTeam(i) == CS_TEAM_CT && !IsPlayerAlive(i)) {
                 CS_RespawnPlayer(i);
@@ -254,10 +257,10 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
     if (!g_bBossActive || client != g_iBossClient || !IsPlayerAlive(client)) return Plugin_Continue;
     SetEntPropFloat(client, Prop_Send, "m_flVelocityModifier", 1.0);
     int target = GetNearestPlayer(client);
-    
+
     if (target != -1) {
         float bPos[3], tPos[3], dir[3], ang[3];
-        GetClientEyePosition(client, bPos); 
+        GetClientEyePosition(client, bPos);
         GetClientEyePosition(target, tPos);
         SubtractVectors(tPos, bPos, dir);
         float dist = GetVectorLength(dir);
@@ -298,74 +301,101 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 
 public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype) {
     if (!g_bBossActive || victim != g_iBossClient) return Plugin_Continue;
-    if (damagetype & DMG_FALL) return Plugin_Handled; 
-    
+    if (damagetype & DMG_FALL) return Plugin_Handled;
+
     if (damage <= 0.0) return Plugin_Continue;
     int dmgDealt = RoundFloat(damage);
     g_iBossHP -= dmgDealt;
-    
+
     if (attacker > 0 && attacker <= MaxClients && attacker != g_iBossClient) {
         g_bPlayerParticipated[attacker] = true;
         PrintCenterText(attacker, "УРОН ПО БОССУ: -%d | ОСТАЛОСЬ: %d", dmgDealt, g_iBossHP);
-        
+
         g_iDamageCounter[attacker] += dmgDealt;
         if (g_iDamageCounter[attacker] >= 5000) {
             g_iDamageCounter[attacker] -= 5000;
-            float dropChance = (g_iBossRarity == 0) ? 1.0 : (g_iBossRarity == 1) ? 5.0 : (g_iBossRarity == 2) ? 10.0 : 25.0;
-            if (GetRandomFloat(0.0, 100.0) <= dropChance) GiveRandomResource(attacker);
+            RollForMaterials(attacker);
         }
     }
-    
+
     if (g_iBossHP <= 0) {
         g_iBossHP = 0;
         damage = 99999999.0;
-        return Plugin_Changed; 
+        return Plugin_Changed;
     } else {
         SetEntityHealth(victim, 99999999);
-        return Plugin_Continue; 
+        return Plugin_Handled;
     }
 }
 
-void GiveRandomResource(int client) {
+void RollForMaterials(int client) {
     if (client < 1 || !IsClientInGame(client)) return;
     char sSteamID[32]; GetClientAuthId(client, AuthId_Steam2, sSteamID, sizeof(sSteamID));
-    int resIndex = GetRandomInt(0, sizeof(g_sResources) - 1);
-    char resName[32]; strcopy(resName, sizeof(resName), g_sResources[resIndex]);
-    
-    char query[512];
-    Format(query, sizeof(query), "INSERT INTO rpg_materials (steamid, %s) VALUES ('%s', 1) ON DUPLICATE KEY UPDATE %s = %s + 1", resName, sSteamID, resName, resName);
-    if (g_dDatabase != null) g_dDatabase.Query(SQL_Callback_Silent, query);
-    
-    char chatName[64];
-    if (StrEqual(resName, "iron_ore")) chatName = "Железная руда";
-    else if (StrEqual(resName, "magic_crystal")) chatName = "Магический кристалл";
-    else if (StrEqual(resName, "titan_heart")) chatName = "Сердце Титана";
-    else chatName = "Осколок Звезды";
-    PrintToChat(client, " \x04[RPG] \x01Вы получили: \x0C%s (1 шт.) \x01за урон!", chatName);
+
+    float playerBonus = RPG_GetItemDropChance(client);
+
+    for (int i = 0; i < sizeof(g_sResources); i++) {
+        float actualChance = 0.0;
+        if (g_iBossRarity == 0) {
+            if (i == 0) actualChance = 25.0;
+            else if (i == 1) actualChance = 15.0;
+            else if (i == 2) actualChance = 5.0;
+            else if (i == 3) actualChance = 1.0;
+        } else if (g_iBossRarity == 1) {
+            if (i == 0) actualChance = 40.0;
+            else if (i == 1) actualChance = 20.0;
+            else if (i == 2) actualChance = 10.0;
+            else if (i == 3) actualChance = 5.0;
+        } else if (g_iBossRarity == 2) {
+            if (i == 0) actualChance = 60.0;
+            else if (i == 1) actualChance = 30.0;
+            else if (i == 2) actualChance = 20.0;
+            else if (i == 3) actualChance = 10.0;
+        } else if (g_iBossRarity == 3) {
+            if (i == 0) actualChance = 80.0;
+            else if (i == 1) actualChance = 50.0;
+            else if (i == 2) actualChance = 30.0;
+            else if (i == 3) actualChance = 15.0;
+        }
+        actualChance += playerBonus;
+
+        if (GetRandomFloat(0.0, 100.0) <= actualChance) {
+            char query[512];
+            Format(query, sizeof(query), "INSERT INTO rpg_materials (steamid, %s) VALUES ('%s', 1) ON DUPLICATE KEY UPDATE %s = %s + 1", g_sResources[i], sSteamID, g_sResources[i], g_sResources[i]);
+            if (g_dDatabase != null) g_dDatabase.Query(SQL_Callback_Silent, query);
+
+            char chatName[64];
+            if (StrEqual(g_sResources[i], "iron_ore")) chatName = "Железная руда";
+            else if (StrEqual(g_sResources[i], "magic_crystal")) chatName = "Магический кристалл";
+            else if (StrEqual(g_sResources[i], "titan_heart")) chatName = "Сердце Титана";
+            else chatName = "Осколок Звезды";
+            PrintToChat(client, " \x04[RPG] \x01Вы получили: \x0C%s (1 шт.) \x01за урон!", chatName);
+        }
+    }
 }
 
 public Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast) {
     int victim = GetClientOfUserId(event.GetInt("userid"));
-    
+
     // ЕСЛИ УБИЛИ БОССА
     if (g_bBossActive && victim == g_iBossClient) {
         g_bBossActive = false;
-        
+
         // Очищаем все таймеры
         if (g_hHudTimer != null) { KillTimer(g_hHudTimer); g_hHudTimer = null; }
         if (g_hRespawnTimer != null) { KillTimer(g_hRespawnTimer); g_hRespawnTimer = null; }
-        
+
         // Завершаем раунд победой CT и включаем обычные условия раунда обратно
         ServerCommand("mp_ignore_round_win_conditions 0");
         CS_TerminateRound(5.0, CSRoundEnd_CTWin);
-        
+
         // ВЫДАЕМ НАГРАДЫ ВСЕМ УЧАСТНИКАМ
         for (int i = 1; i <= MaxClients; i++) {
             if (IsClientInGame(i) && g_bPlayerParticipated[i]) {
                 HandleRewards(i);
             }
         }
-        
+
         if (IsClientInGame(victim)) KickClient(victim, "Босс повержен");
     }
     return Plugin_Continue;
@@ -374,58 +404,89 @@ public Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadca
 void HandleRewards(int client) {
     if (client < 1 || IsFakeClient(client)) return;
     char sSteamID[32]; GetClientAuthId(client, AuthId_Steam2, sSteamID, sizeof(sSteamID));
-    
+
     int mult = g_iBossRarity + 1;
     char query[1024];
-    // Ресурсы за убийство
     Format(query, sizeof(query), "INSERT INTO rpg_materials (steamid, iron_ore, magic_crystal) VALUES ('%s', %d, %d) ON DUPLICATE KEY UPDATE iron_ore=iron_ore+%d, magic_crystal=magic_crystal+%d", sSteamID, 100*mult, 30*mult, 100*mult, 30*mult);
     if (g_dDatabase != null) g_dDatabase.Query(SQL_Callback_Silent, query);
 
-    KeyValues kv = new KeyValues("RPG_Items");
-    char path[PLATFORM_MAX_PATH];
-    BuildPath(Path_SM, path, sizeof(path), "configs/rpg_items.txt");
-    if (!kv.ImportFromFile(path)) {
-        delete kv;
-        return;
+    if (g_dDatabase != null) {
+        Format(query, sizeof(query), "SELECT id, item_name, rarity FROM rpg_items_list");
+        g_dDatabase.Query(SQL_Callback_BossItemsDrop, query, GetClientUserId(client));
     }
-
-    if (kv.GotoFirstSubKey()) {
-        char sItemId[16], sItemName[64];
-        do {
-            if (g_iBossRarity >= kv.GetNum("drop_from", 0)) {
-                if (GetRandomFloat(0.0, 100.0) <= kv.GetFloat("drop_chance", 0.0)) {
-                    kv.GetSectionName(sItemId, sizeof(sItemId));
-                    kv.GetString("name", sItemName, sizeof(sItemName));
-                    
-                    Format(query, sizeof(query), "INSERT INTO rpg_inventory (steamid, item_id, is_equipped, slot_index) VALUES ('%s', %d, 0, 0)", sSteamID, StringToInt(sItemId));
-                    if (g_dDatabase != null) g_dDatabase.Query(SQL_Callback_Silent, query);
-                    
-                    PrintToChat(client, " \x04[RPG] \x01Вы выбили \x04%s\x01 с Босса!", sItemName);
-                }
-            }
-        } while (kv.GotoNextKey());
-    }
-    delete kv;
-    
     g_bPlayerParticipated[client] = false;
 }
+
+public void SQL_Callback_BossItemsDrop(Database db, DBResultSet results, const char[] error, any data) {
+    if (error[0] != '\0') {
+        LogError("[RPG Boss] Items Drop SQL Error: %s", error);
+        return;
+    }
+    int client = GetClientOfUserId(data);
+    if (client < 1 || !IsClientInGame(client)) return;
+
+    char sSteamID[32]; GetClientAuthId(client, AuthId_Steam2, sSteamID, sizeof(sSteamID));
+    float playerBonus = RPG_GetItemDropChance(client);
+    float rareBonus = RPG_GetItemRareDropChance(client);
+
+    while (results.FetchRow()) {
+        int itemId = results.FetchInt(0);
+        char itemName[64]; results.FetchString(1, itemName, sizeof(itemName));
+        char itemRarityStr[32]; results.FetchString(2, itemRarityStr, sizeof(itemRarityStr));
+
+        float dropChance = 0.0;
+        if (StrEqual(itemRarityStr, "common") || StrEqual(itemRarityStr, "expensive")) {
+            if (g_iBossRarity == 0) dropChance = 25.0;
+            else if (g_iBossRarity == 1) dropChance = 40.0;
+            else if (g_iBossRarity == 2) dropChance = 60.0;
+            else if (g_iBossRarity == 3) dropChance = 80.0;
+            dropChance += playerBonus;
+        } else if (StrEqual(itemRarityStr, "rare")) {
+            if (g_iBossRarity == 0) dropChance = 15.0;
+            else if (g_iBossRarity == 1) dropChance = 20.0;
+            else if (g_iBossRarity == 2) dropChance = 30.0;
+            else if (g_iBossRarity == 3) dropChance = 50.0;
+            dropChance += rareBonus;
+        } else if (StrEqual(itemRarityStr, "legendary")) {
+            if (g_iBossRarity == 0) dropChance = 5.0;
+            else if (g_iBossRarity == 1) dropChance = 10.0;
+            else if (g_iBossRarity == 2) dropChance = 20.0;
+            else if (g_iBossRarity == 3) dropChance = 30.0;
+            dropChance += rareBonus;
+        } else if (StrEqual(itemRarityStr, "mythical")) {
+            if (g_iBossRarity == 0) dropChance = 1.0;
+            else if (g_iBossRarity == 1) dropChance = 5.0;
+            else if (g_iBossRarity == 2) dropChance = 10.0;
+            else if (g_iBossRarity == 3) dropChance = 15.0;
+            dropChance += rareBonus;
+        }
+
+        if (GetRandomFloat(0.0, 100.0) <= dropChance) {
+            char query[512];
+            Format(query, sizeof(query), "INSERT INTO rpg_inventory (steamid, item_id, is_equipped, slot_index) VALUES ('%s', %d, 0, 0)", sSteamID, itemId);
+            db.Query(SQL_Callback_Silent, query);
+            PrintToChat(client, " \x04[RPG] \x01Вы выбили \x04%s\x01 с Босса!", itemName);
+        }
+    }
+}
+
 
 public Action Timer_UpdateHud(Handle timer) {
     if (!g_bBossActive || g_iBossClient == -1 || !IsClientInGame(g_iBossClient)) {
         g_hHudTimer = null;
         return Plugin_Stop;
     }
-    
+
     // Считаем сколько осталось времени
     int timeLeft = RoundToCeil(g_flBossEndTime - GetEngineTime());
-    
+
     // ЕСЛИ ВРЕМЯ ВЫШЛО (10 минут прошло)
     if (timeLeft <= 0) {
         g_bBossActive = false; // Выключаем статус, чтобы не выдать награды при смерти
-        
+
         PrintToChatAll(" \x04[RPG] \x02Время вышло! Танос покинул поле боя.");
         if (IsClientInGame(g_iBossClient)) KickClient(g_iBossClient, "Время вышло");
-        
+
         // Отключаем бесконечные спавны и делаем Ничью
         if (g_hRespawnTimer != null) { KillTimer(g_hRespawnTimer); g_hRespawnTimer = null; }
         ServerCommand("mp_ignore_round_win_conditions 0");
@@ -434,7 +495,7 @@ public Action Timer_UpdateHud(Handle timer) {
         g_hHudTimer = null;
         return Plugin_Stop;
     }
-    
+
     char rName[32];
     switch(g_iBossRarity) {
         case 0: rName = "Обычный";
@@ -442,7 +503,7 @@ public Action Timer_UpdateHud(Handle timer) {
         case 2: rName = "Легендарный";
         case 3: rName = "МИФИЧЕСКИЙ";
     }
-    
+
     // Форматируем минуты и секунды
     int mins = timeLeft / 60;
     int secs = timeLeft % 60;
@@ -478,7 +539,7 @@ bool FindHottestSpawnPoint(float pos[3]) {
             GetClientAbsOrigin(i, playerPos);
             GetClientEyeAngles(i, eyeAng);
             GetAngleVectors(eyeAng, fwd, NULL_VECTOR, NULL_VECTOR);
-            
+
             pos[0] = playerPos[0] + (fwd[0] * 150.0);
             pos[1] = playerPos[1] + (fwd[1] * 150.0);
             pos[2] = playerPos[2] + 10.0;
@@ -490,4 +551,19 @@ bool FindHottestSpawnPoint(float pos[3]) {
 
 public void SQL_Callback_Silent(Database db, DBResultSet results, const char[] error, any data) {
     if (error[0] != '\0') LogError("[RPG SQL Error] %s", error);
+}
+public Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast) {
+    int client = GetClientOfUserId(event.GetInt("userid"));
+    if (g_bBossActive && client == g_iBossClient) {
+        CreateTimer(0.2, Timer_SetBossHealth, client);
+    }
+    return Plugin_Continue;
+}
+
+public Action Timer_SetBossHealth(Handle timer, any client) {
+    if (g_bBossActive && client == g_iBossClient && IsClientInGame(client)) {
+        SetEntProp(client, Prop_Data, "m_iMaxHealth", 99999999);
+        SetEntityHealth(client, 99999999);
+    }
+    return Plugin_Continue;
 }

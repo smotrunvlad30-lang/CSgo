@@ -82,28 +82,47 @@ void HealPlayer(int client, int amount) {
 #include "rpg_skills_farm.sp"
 #include "rpg_skills_all.sp"
 #include "rpg_svip.sp"
-#include "rpg_items_core.sp" 
-#include "rpg_boss.sp" 
+#include "rpg_items_core.sp"
+#include "rpg_boss.sp"
 
-public Plugin myinfo = { 
-    name = "RPG System: CORE (Web Version)", 
-    author = "Skvirt", 
-    version = "5.0.3" 
+public Plugin myinfo = {
+    name = "RPG System: CORE (Web Version)",
+    author = "Skvirt",
+    version = "5.0.3"
 };
 
 // ==============================================================================
 // ИНИЦИАЛИЗАЦИЯ
 // ==============================================================================
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max) {
+    CreateNative("RPG_GetItemDropChance", Native_GetItemDropChance);
+    CreateNative("RPG_GetItemRareDropChance", Native_GetItemRareDropChance);
+    RegPluginLibrary("rpg_core");
+    return APLRes_Success;
+}
+
+public int Native_GetItemDropChance(Handle plugin, int numParams) {
+    int client = GetNativeCell(1);
+    if (client < 1 || client > MaxClients) return 0;
+    return view_as<int>(g_fItem_DropChance[client]);
+}
+
+public int Native_GetItemRareDropChance(Handle plugin, int numParams) {
+    int client = GetNativeCell(1);
+    if (client < 1 || client > MaxClients) return 0;
+    return view_as<int>(g_fItem_RareDropChance[client]);
+}
+
 public void OnPluginStart() {
     RegConsoleCmd("sm_rpg", Cmd_RPGMenu);
-    
+
     HookEvent("player_spawn", Event_Spawn);
     HookEvent("player_death", Event_Death);
-    HookEvent("round_start", Event_RoundStart); 
+    HookEvent("round_start", Event_RoundStart);
     HookEvent("bomb_planted", Event_BombPlanted);
     HookEvent("bomb_defused", Event_BombDefused);
     HookEvent("round_end", Event_RoundEnd);
-    
+
     // === СНЯТИЕ СЕРВЕРНЫХ ЛИМИТОВ ФИЗИКИ (ФИКС ТРЯСКИ) ===
     Handle cvar;
     if ((cvar = FindConVar("sv_maxvelocity")) != null) SetConVarInt(cvar, 15000); // Убираем лимит скорости полета
@@ -113,21 +132,21 @@ public void OnPluginStart() {
     // =====================================================
 
     Database.Connect(OnDBConnect, "rpg");
-    LoadSkillsConfig(); 
-    
+    LoadSkillsConfig();
+
     Health_OnPluginStart();
-    Items_OnPluginStart(); 
-    Attack_OnPluginStart(); 
+    Items_OnPluginStart();
+    Attack_OnPluginStart();
     Auras_OnPluginStart();
     AllSkills_OnPluginStart();
     SVip_OnPluginStart();
-    
+
     CreateTimer(1.0, Timer_GlobalLoop, _, TIMER_REPEAT);
 }
 
 public void OnMapStart() {
     LoadSkillsConfig();
-    
+
     // Дублируем снятие лимитов при смене карты (на всякий случай, если server.cfg их сбросит)
     Handle cvar;
     if ((cvar = FindConVar("sv_maxvelocity")) != null) SetConVarInt(cvar, 15000);
@@ -137,9 +156,9 @@ public void OnMapStart() {
 }
 
 public void OnClientPutInServer(int client) {
-    g_bLoaded[client] = false; 
+    g_bLoaded[client] = false;
     Health_OnClientPutInServer(client);
-    Attack_OnClientPutInServer(client); 
+    Attack_OnClientPutInServer(client);
     AllSkills_OnClientPutInServer(client);
     SVip_OnClientPutInServer(client);
     SDKHook(client, SDKHook_WeaponSwitchPost, Event_WeaponSwitchPost);
@@ -150,7 +169,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 
     SVip_OnPlayerRunCmd(client, buttons, impulse, vel, angles, weapon, subtype, cmdnum, tickcount, seed, mouse);
     Movement_OnPlayerRunCmd(client, buttons, impulse, vel, angles, weapon, subtype, cmdnum, tickcount, seed, mouse);
-    
+
     return Plugin_Continue;
 }
 
@@ -274,12 +293,12 @@ public Action Timer_GlobalLoop(Handle timer) {
             int nextXP = 200 + (g_iLevel[i] * 50);
             SetHudTextParams(-1.0, 0.90, 1.1, 255, 255, 255, 255, 0, 0.0, 0.0, 0.0);
             ShowHudText(i, -1, "「 LEVEL: %d | XP: %d/%d 」\n「 КРЕДИТЫ: %d$ 」", g_iLevel[i], g_iExp[i], nextXP, g_iMoney[i]);
-            
+
             Health_OnTick(i, g_iTickCount);
             Radar_OnTick(i);
-            Auras_OnTick(i); 
-            AllSkills_OnTick(i); 
-            Items_OnTick(i); 
+            Auras_OnTick(i);
+            AllSkills_OnTick(i);
+            Items_OnTick(i);
         }
     }
     return Plugin_Continue;
@@ -305,9 +324,9 @@ public void Event_Spawn(Event event, const char[] name, bool dontBroadcast) {
 public Action Timer_ApplySpawnSkills(Handle timer, any userid) {
     int client = GetClientOfUserId(userid);
     if (client && IsClientInGame(client)) {
-        Items_OnPlayerSpawn(client); 
-        Health_OnPlayerSpawn(client); 
-        Movement_OnPlayerSpawn(client); 
+        Items_OnPlayerSpawn(client);
+        Health_OnPlayerSpawn(client);
+        Movement_OnPlayerSpawn(client);
         AllSkills_OnPlayerSpawn(client);
         SVip_OnPlayerSpawn(client);
     }
@@ -319,10 +338,10 @@ public void Event_Death(Event event, const char[] name, bool dontBroadcast) {
     int victim = GetClientOfUserId(event.GetInt("userid"));
     int assister = GetClientOfUserId(event.GetInt("assister"));
     bool headshot = event.GetBool("headshot");
-    
+
     char wpn[32]; event.GetString("weapon", wpn, sizeof(wpn));
     float deathPos[3];
-    
+
     if (victim > 0 && victim <= MaxClients && IsClientInGame(victim)) {
         GetClientAbsOrigin(victim, deathPos);
     }
@@ -333,13 +352,13 @@ public void Event_Death(Event event, const char[] name, bool dontBroadcast) {
     Items_OnPlayerDeath(victim, attacker);
 
     if (assister > 0 && assister != victim) AddXP(assister, 2000, "Помощь");
-    
+
     if (attacker > 0 && attacker != victim) {
         Farm_OnPlayerDeath(attacker, victim, wpn);
 
         int xp = headshot ? 2000 : 500;
         char reason[32]; Format(reason, sizeof(reason), headshot ? "Хедшот" : "Убийство");
-        
+
         if (g_iLevel[victim] - g_iLevel[attacker] >= 5) {
             int diff = g_iLevel[victim] - g_iLevel[attacker];
             xp += (diff * 40);
@@ -372,7 +391,7 @@ public void Event_RoundEnd(Event event, const char[] name, bool dontBroadcast) {
 // СИСТЕМА ОПЫТА
 // ==============================================================================
 float GetXPMultiplier(int client) {
-    float mult = 1.0 + (g_fItem_BonusXp[client] / 100.0); 
+    float mult = 1.0 + (g_fItem_BonusXp[client] / 100.0);
     if (g_sXp1[client] > 0) mult *= 2.0;
     if (g_sXp2[client] > 0) mult *= 2.0;
     if (g_sXp3[client] > 0) mult *= 2.0;
@@ -383,13 +402,13 @@ void AddXP(int client, int amount, const char[] reason) {
     if (!client || !IsClientInGame(client)) return;
     int playersCount = 0;
     for (int i = 1; i <= MaxClients; i++) if (IsClientInGame(i) && GetClientTeam(i) >= 2) playersCount++;
-    
+
     float finalMult = GetXPMultiplier(client);
-    if (playersCount < 4) finalMult *= 0.1; 
-    
+    if (playersCount < 4) finalMult *= 0.1;
+
     int f_amount = RoundToFloor(float(amount) * finalMult);
     if (f_amount <= 0) f_amount = 1;
-    
+
     g_iExp[client] += f_amount;
     PrintToChat(client, "[\x04RPG\x01] +%d XP (%s)", f_amount, reason);
     CheckLevelUp(client);
@@ -399,19 +418,19 @@ void CheckLevelUp(int client) {
     bool leveledUp = false;
     int nextXP = 200 + (g_iLevel[client] * 50);
     while (g_iExp[client] >= nextXP) {
-        g_iExp[client] -= nextXP; 
+        g_iExp[client] -= nextXP;
         g_iLevel[client]++;
-        nextXP = 200 + (g_iLevel[client] * 50); 
-        
+        nextXP = 200 + (g_iLevel[client] * 50);
+
         int reward = 5000;
-        if (CheckCommandAccess(client, "", ADMFLAG_CUSTOM1, true)) reward *= 2; 
-        
+        if (CheckCommandAccess(client, "", ADMFLAG_CUSTOM1, true)) reward *= 2;
+
         g_iMoney[client] += reward;
         leveledUp = true;
     }
     if (leveledUp) {
         PrintToChat(client, "[\x04RPG\x01] LVL UP! Уровень: \x04%d\x01", g_iLevel[client]);
-        SavePlayerProgress(client); 
+        SavePlayerProgress(client);
     }
 }
 
@@ -428,51 +447,51 @@ public void OnClientPostAdminCheck(int client) {
 }
 
 void LoadPlayerData(int client) {
-    g_bLoaded[client] = false; 
+    g_bLoaded[client] = false;
     if (IsFakeClient(client) || g_DB == null) return;
-    
-    char auth[32], q1[1024], q2[1024], finalQ[4096]; 
+
+    char auth[32], q1[1024], q2[1024], finalQ[4096];
     GetClientAuthId(client, AuthId_Steam2, auth, sizeof(auth));
-    
+
     Format(q1, sizeof(q1), "SELECT money, lvl, xp, hp_lvl, hp_reg_lvl, hp_stay_lvl, vamp_lvl, dmg_lvl, crit_lvl, armor_lvl, armor_reg_lvl, butcher_lvl, respawn_lvl, arm_dest, arm_pierc, deadly, devil, speed, adren, impulse, atk_spd, pistol, grav, long_jmp, climber, heavy_jmp, agility, swap, rat, invis, ninja, spy, spikes, slow_aura, shrapnel, knockback, disarm, paralyze, silence, xp_1, xp_2, xp_3, farm_duals, farm_knife, wise_knife, farm_mag7, farm_zeus, wise_zeus ");
     Format(q2, sizeof(q2), ", zeus_return, zeus_regen, ice_knife, anti_ice_knife, ice_nade, fire_nade, poison_smoke, nade_regen, clone_decoy, heavy_scout, poison_scout, anti_poison_scout, sniper_sense, fire_pistol, ice_pistol, anti_ice_pistol, kamikaze, thanos, phoenix, holy_touch, mirror, hp_reg_stand_lvl FROM rpg_system WHERE steamid='%s'", auth);
-    
-    Format(finalQ, sizeof(finalQ), "%s%s", q1, q2); 
+
+    Format(finalQ, sizeof(finalQ), "%s%s", q1, q2);
     g_DB.Query(OnLoaded, finalQ, GetClientUserId(client));
 }
 
 public void OnLoaded(Database db, DBResultSet res, const char[] err, any userid) {
     int c = GetClientOfUserId(userid); if (!c || res == null) return;
-    
+
     if (res.FetchRow()) {
         g_iMoney[c] = res.FetchInt(0); g_iLevel[c] = res.FetchInt(1); g_iExp[c] = res.FetchInt(2);
-        g_sHP[c] = res.FetchInt(3); g_sHPReg[c] = res.FetchInt(4); g_sHPStay[c] = res.FetchInt(5); g_sVamp[c] = res.FetchInt(6); g_sDmg[c] = res.FetchInt(7); 
-        g_sCrit[c] = res.FetchInt(8); g_sArmor[c] = res.FetchInt(9); g_sArmorReg[c] = res.FetchInt(10); g_sButcher[c] = res.FetchInt(11); g_sRespawn[c] = res.FetchInt(12); 
-        g_sArmDest[c] = res.FetchInt(13); g_sArmPierc[c] = res.FetchInt(14); g_sDeadly[c] = res.FetchInt(15); g_sDevil[c] = res.FetchInt(16); g_sSpeed[c] = res.FetchInt(17); 
-        g_sAdren[c] = res.FetchInt(18); g_sImpulse[c] = res.FetchInt(19); g_sAtkSpd[c] = res.FetchInt(20); g_sPistol[c] = res.FetchInt(21); g_sGrav[c] = res.FetchInt(22); 
-        g_sLongJmp[c] = res.FetchInt(23); g_sClimber[c] = res.FetchInt(24); g_sHeavyJmp[c] = res.FetchInt(25); g_sAgility[c] = res.FetchInt(26); g_sSwap[c] = res.FetchInt(27); 
-        g_sRat[c] = res.FetchInt(28); g_sInvis[c] = res.FetchInt(29); g_sNinja[c] = res.FetchInt(30); g_sSpy[c] = res.FetchInt(31); g_sSpikes[c] = res.FetchInt(32); 
-        g_sSlowAura[c] = res.FetchInt(33); g_sShrapnel[c] = res.FetchInt(34); g_sKnockback[c] = res.FetchInt(35); g_sDisarm[c] = res.FetchInt(36); g_sParalyze[c] = res.FetchInt(37); 
-        g_sSilence[c] = res.FetchInt(38); g_sXp1[c] = res.FetchInt(39); g_sXp2[c] = res.FetchInt(40); g_sXp3[c] = res.FetchInt(41); g_sFarmDuals[c] = res.FetchInt(42); 
-        g_sFarmKnife[c] = res.FetchInt(43); g_sWiseKnife[c] = res.FetchInt(44); g_sFarmMag7[c] = res.FetchInt(45); g_sFarmZeus[c] = res.FetchInt(46); g_sWiseZeus[c] = res.FetchInt(47); 
-        g_sZeusReturn[c] = res.FetchInt(48); g_sZeusRegen[c] = res.FetchInt(49); g_sIceKnife[c] = res.FetchInt(50); g_sAntiIceKnife[c] = res.FetchInt(51); g_sIceNade[c] = res.FetchInt(52); 
-        g_sFireNade[c] = res.FetchInt(53); g_sPoisonSmoke[c] = res.FetchInt(54); g_sNadeRegen[c] = res.FetchInt(55); g_sCloneDecoy[c] = res.FetchInt(56); g_sHeavyScout[c] = res.FetchInt(57); 
-        g_sPoisonScout[c] = res.FetchInt(58); g_sAntiPoisonScout[c] = res.FetchInt(59); g_sSniperSense[c] = res.FetchInt(60); g_sFirePistol[c] = res.FetchInt(61); g_sIcePistol[c] = res.FetchInt(62); 
-        g_sAntiIcePistol[c] = res.FetchInt(63); g_sKamikaze[c] = res.FetchInt(64); g_sThanos[c] = res.FetchInt(65); g_sPhoenix[c] = res.FetchInt(66); g_sHolyTouch[c] = res.FetchInt(67); 
+        g_sHP[c] = res.FetchInt(3); g_sHPReg[c] = res.FetchInt(4); g_sHPStay[c] = res.FetchInt(5); g_sVamp[c] = res.FetchInt(6); g_sDmg[c] = res.FetchInt(7);
+        g_sCrit[c] = res.FetchInt(8); g_sArmor[c] = res.FetchInt(9); g_sArmorReg[c] = res.FetchInt(10); g_sButcher[c] = res.FetchInt(11); g_sRespawn[c] = res.FetchInt(12);
+        g_sArmDest[c] = res.FetchInt(13); g_sArmPierc[c] = res.FetchInt(14); g_sDeadly[c] = res.FetchInt(15); g_sDevil[c] = res.FetchInt(16); g_sSpeed[c] = res.FetchInt(17);
+        g_sAdren[c] = res.FetchInt(18); g_sImpulse[c] = res.FetchInt(19); g_sAtkSpd[c] = res.FetchInt(20); g_sPistol[c] = res.FetchInt(21); g_sGrav[c] = res.FetchInt(22);
+        g_sLongJmp[c] = res.FetchInt(23); g_sClimber[c] = res.FetchInt(24); g_sHeavyJmp[c] = res.FetchInt(25); g_sAgility[c] = res.FetchInt(26); g_sSwap[c] = res.FetchInt(27);
+        g_sRat[c] = res.FetchInt(28); g_sInvis[c] = res.FetchInt(29); g_sNinja[c] = res.FetchInt(30); g_sSpy[c] = res.FetchInt(31); g_sSpikes[c] = res.FetchInt(32);
+        g_sSlowAura[c] = res.FetchInt(33); g_sShrapnel[c] = res.FetchInt(34); g_sKnockback[c] = res.FetchInt(35); g_sDisarm[c] = res.FetchInt(36); g_sParalyze[c] = res.FetchInt(37);
+        g_sSilence[c] = res.FetchInt(38); g_sXp1[c] = res.FetchInt(39); g_sXp2[c] = res.FetchInt(40); g_sXp3[c] = res.FetchInt(41); g_sFarmDuals[c] = res.FetchInt(42);
+        g_sFarmKnife[c] = res.FetchInt(43); g_sWiseKnife[c] = res.FetchInt(44); g_sFarmMag7[c] = res.FetchInt(45); g_sFarmZeus[c] = res.FetchInt(46); g_sWiseZeus[c] = res.FetchInt(47);
+        g_sZeusReturn[c] = res.FetchInt(48); g_sZeusRegen[c] = res.FetchInt(49); g_sIceKnife[c] = res.FetchInt(50); g_sAntiIceKnife[c] = res.FetchInt(51); g_sIceNade[c] = res.FetchInt(52);
+        g_sFireNade[c] = res.FetchInt(53); g_sPoisonSmoke[c] = res.FetchInt(54); g_sNadeRegen[c] = res.FetchInt(55); g_sCloneDecoy[c] = res.FetchInt(56); g_sHeavyScout[c] = res.FetchInt(57);
+        g_sPoisonScout[c] = res.FetchInt(58); g_sAntiPoisonScout[c] = res.FetchInt(59); g_sSniperSense[c] = res.FetchInt(60); g_sFirePistol[c] = res.FetchInt(61); g_sIcePistol[c] = res.FetchInt(62);
+        g_sAntiIcePistol[c] = res.FetchInt(63); g_sKamikaze[c] = res.FetchInt(64); g_sThanos[c] = res.FetchInt(65); g_sPhoenix[c] = res.FetchInt(66); g_sHolyTouch[c] = res.FetchInt(67);
         g_sMirror[c] = res.FetchInt(68); g_sHPRegStand[c] = res.FetchInt(69);
         g_bLoaded[c] = true;
     } else {
         // Создаем нового игрока
-        char auth[32], name[32], insQ[1024]; 
-        GetClientAuthId(c, AuthId_Steam2, auth, sizeof(auth)); 
+        char auth[32], name[32], insQ[1024];
+        GetClientAuthId(c, AuthId_Steam2, auth, sizeof(auth));
         GetClientName(c, name, sizeof(name));
-        
+
        // Теперь новые игроки будут стартовать с 0, либо с тем, что ты пропишешь в БД
 Format(insQ, sizeof(insQ), "INSERT IGNORE INTO rpg_system (steamid, nickname, lvl, xp, money) VALUES ('%s', '%s', 1, 0, 0)", auth, name);
 
         // === ВЫДАЧА СТАРТОВЫХ БОТИНОК ===
         int startBootID = 20; // Твой ID обычных ботинок
-        
+
         char bootQ[512];
         Format(bootQ, sizeof(bootQ), "INSERT INTO rpg_inventory (steamid, item_id, is_equipped, slot_index, upgrade_speed, upgrade_grav) VALUES ('%s', %d, 0, 0, 0, 0)", auth, startBootID);
         g_DB.Query(SQL_IgnoreError, bootQ);
@@ -497,6 +516,6 @@ void SavePlayerProgress(int client) {
     }
 }
 
-public void SQL_IgnoreError(Database db, DBResultSet res, const char[] err, any data) { 
-    if (err[0]) LogError("SQL Error: %s", err); 
+public void SQL_IgnoreError(Database db, DBResultSet res, const char[] err, any data) {
+    if (err[0]) LogError("SQL Error: %s", err);
 }
