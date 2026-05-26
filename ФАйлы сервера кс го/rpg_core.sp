@@ -500,3 +500,13 @@ void SavePlayerProgress(int client) {
 public void SQL_IgnoreError(Database db, DBResultSet res, const char[] err, any data) { 
     if (err[0]) LogError("SQL Error: %s", err); 
 }
+
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max) {
+    CreateNative("RPG_GetItemDropChance", Native_GetItemDropChance);
+    return APLRes_Success;
+}
+
+public any Native_GetItemDropChance(Handle plugin, int numParams) {
+    int client = GetNativeCell(1);
+    return g_fItem_DropChance[client];
+}
