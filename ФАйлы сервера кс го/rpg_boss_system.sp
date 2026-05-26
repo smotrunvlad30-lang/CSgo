@@ -19,7 +19,7 @@ native float RPG_GetItemRareDropChance(int client);
 Database g_dDatabase = null;
 bool g_bBossActive = false;
 int g_iBossClient = -1;
-int g_iBossRarity = 0; 
+int g_iBossRarity = 0;
 
 Handle g_hHudTimer = null;
 Handle g_hRespawnTimer = null;
@@ -50,16 +50,16 @@ public void OnPluginStart() {
     if (g_dDatabase == null) {
         LogError("[RPG Boss] Ошибка подключения к БД: %s", error);
     }
-    
+
     g_hHudSync = CreateHudSynchronizer();
     CreateTimer(60.0, Timer_CheckTime, _, TIMER_REPEAT);
-    
+
     HookEvent("player_death", Event_PlayerDeath);
     HookEvent("player_spawn", Event_PlayerSpawn);
-    
+
     RegConsoleCmd("sm_bos", Command_BossMenu);
     RegConsoleCmd("sm_boss", Command_BossMenu);
-    
+
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i)) {
             SDKHook(i, SDKHook_OnTakeDamage, OnTakeDamage);
@@ -105,7 +105,7 @@ public void OnMapEnd() {
     g_iBossClient = -1;
     if (g_hHudTimer != null) { KillTimer(g_hHudTimer); g_hHudTimer = null; }
     if (g_hRespawnTimer != null) { KillTimer(g_hRespawnTimer); g_hRespawnTimer = null; }
-    
+
     // Возвращаем обычные условия раунда, если карта сменилась во время босса
     ServerCommand("mp_ignore_round_win_conditions 0");
 }
@@ -184,10 +184,10 @@ void SpawnThanosBot(int bot) {
     g_iBossClient = bot;
     g_flLastAttackTime = GetEngineTime();
     g_flStuckCheckTime = GetEngineTime();
-    
+
     // БОСС ИСЧЕЗНЕТ РОВНО ЧЕРЕЗ 10 МИНУТ (600 СЕКУНД)
     g_flBossEndTime = GetEngineTime() + 600.0;
-    
+
     // Отключаем обычное завершение раунда (по времени карты)
     ServerCommand("mp_ignore_round_win_conditions 1");
 
@@ -208,20 +208,20 @@ void SpawnThanosBot(int bot) {
     SetEntProp(bot, Prop_Data, "m_iMaxHealth", 99999999);
     SetEntityHealth(bot, 99999999);
     SetEntityModel(bot, g_sBossModel);
-    SetEntProp(bot, Prop_Send, "m_bGunGameImmunity", 0); 
+    SetEntProp(bot, Prop_Send, "m_bGunGameImmunity", 0);
     SetEntProp(bot, Prop_Data, "m_takedamage", 2);
     SetEntPropFloat(bot, Prop_Data, "m_flMaxspeed", 500.0);
     GivePlayerItem(bot, "weapon_knife");
     float spawnPos[3];
     if (FindHottestSpawnPoint(spawnPos)) TeleportEntity(bot, spawnPos, NULL_VECTOR, NULL_VECTOR);
-    
+
     // ЗАПУСК ТАЙМЕРОВ (HUD + ВОЗРОЖДЕНИЕ)
     if (g_hHudTimer != null) KillTimer(g_hHudTimer);
     g_hHudTimer = CreateTimer(0.5, Timer_UpdateHud, _, TIMER_REPEAT);
-    
+
     if (g_hRespawnTimer != null) KillTimer(g_hRespawnTimer);
     g_hRespawnTimer = CreateTimer(1.0, Timer_EnforceRules, _, TIMER_REPEAT);
-    
+
     SDKHook(bot, SDKHook_OnTakeDamage, OnTakeDamage);
 
     PrintToChatAll(" \x04[RPG] \x02ВНИМАНИЕ! \x01ТАНОС ПРИБЫЛ!");
@@ -235,16 +235,16 @@ public Action Timer_EnforceRules(Handle timer) {
         g_hRespawnTimer = null;
         return Plugin_Stop;
     }
-    
+
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && !IsFakeClient(i)) {
             int team = GetClientTeam(i);
-            
+
             // Если игрок за Террористов (Т), переводим его за Спецназ (СТ)
             if (team == CS_TEAM_T) {
                 ChangeClientTeam(i, CS_TEAM_CT);
             }
-            
+
             // Если игрок мертв и находится за Спецназ - возрождаем
             if (GetClientTeam(i) == CS_TEAM_CT && !IsPlayerAlive(i)) {
                 CS_RespawnPlayer(i);
@@ -258,10 +258,10 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
     if (!g_bBossActive || client != g_iBossClient || !IsPlayerAlive(client)) return Plugin_Continue;
     SetEntPropFloat(client, Prop_Send, "m_flVelocityModifier", 1.0);
     int target = GetNearestPlayer(client);
-    
+
     if (target != -1) {
         float bPos[3], tPos[3], dir[3], ang[3];
-        GetClientEyePosition(client, bPos); 
+        GetClientEyePosition(client, bPos);
         GetClientEyePosition(target, tPos);
         SubtractVectors(tPos, bPos, dir);
         float dist = GetVectorLength(dir);
@@ -302,27 +302,27 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 
 public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype) {
     if (!g_bBossActive || victim != g_iBossClient) return Plugin_Continue;
-    if (damagetype & DMG_FALL) return Plugin_Handled; 
-    
+    if (damagetype & DMG_FALL) return Plugin_Handled;
+
     if (damage <= 0.0) return Plugin_Continue;
     int dmgDealt = RoundFloat(damage);
     g_iBossHP -= dmgDealt;
-    
+
     if (attacker > 0 && attacker <= MaxClients && attacker != g_iBossClient) {
         g_bPlayerParticipated[attacker] = true;
         PrintCenterText(attacker, "УРОН ПО БОССУ: -%d | ОСТАЛОСЬ: %d", dmgDealt, g_iBossHP);
-        
+
         g_iDamageCounter[attacker] += dmgDealt;
         if (g_iDamageCounter[attacker] >= 5000) {
             g_iDamageCounter[attacker] -= 5000;
             RollForMaterials(attacker);
         }
     }
-    
+
     if (g_iBossHP <= 0) {
         g_iBossHP = 0;
         damage = 99999999.0;
-        return Plugin_Changed; 
+        return Plugin_Changed;
     } else {
         SetEntityHealth(victim, 99999999);
         return Plugin_Handled;
@@ -377,26 +377,26 @@ void RollForMaterials(int client) {
 
 public Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast) {
     int victim = GetClientOfUserId(event.GetInt("userid"));
-    
+
     // ЕСЛИ УБИЛИ БОССА
     if (g_bBossActive && victim == g_iBossClient) {
         g_bBossActive = false;
-        
+
         // Очищаем все таймеры
         if (g_hHudTimer != null) { KillTimer(g_hHudTimer); g_hHudTimer = null; }
         if (g_hRespawnTimer != null) { KillTimer(g_hRespawnTimer); g_hRespawnTimer = null; }
-        
+
         // Завершаем раунд победой CT и включаем обычные условия раунда обратно
         ServerCommand("mp_ignore_round_win_conditions 0");
         CS_TerminateRound(5.0, CSRoundEnd_CTWin);
-        
+
         // ВЫДАЕМ НАГРАДЫ ВСЕМ УЧАСТНИКАМ
         for (int i = 1; i <= MaxClients; i++) {
             if (IsClientInGame(i) && g_bPlayerParticipated[i]) {
                 HandleRewards(i);
             }
         }
-        
+
         if (IsClientInGame(victim)) KickClient(victim, "Босс повержен");
     }
     return Plugin_Continue;
@@ -477,17 +477,17 @@ public Action Timer_UpdateHud(Handle timer) {
         g_hHudTimer = null;
         return Plugin_Stop;
     }
-    
+
     // Считаем сколько осталось времени
     int timeLeft = RoundToCeil(g_flBossEndTime - GetEngineTime());
-    
+
     // ЕСЛИ ВРЕМЯ ВЫШЛО (10 минут прошло)
     if (timeLeft <= 0) {
         g_bBossActive = false; // Выключаем статус, чтобы не выдать награды при смерти
-        
+
         PrintToChatAll(" \x04[RPG] \x02Время вышло! Танос покинул поле боя.");
         if (IsClientInGame(g_iBossClient)) KickClient(g_iBossClient, "Время вышло");
-        
+
         // Отключаем бесконечные спавны и делаем Ничью
         if (g_hRespawnTimer != null) { KillTimer(g_hRespawnTimer); g_hRespawnTimer = null; }
         ServerCommand("mp_ignore_round_win_conditions 0");
@@ -496,7 +496,7 @@ public Action Timer_UpdateHud(Handle timer) {
         g_hHudTimer = null;
         return Plugin_Stop;
     }
-    
+
     char rName[32];
     switch(g_iBossRarity) {
         case 0: rName = "Обычный";
@@ -504,7 +504,7 @@ public Action Timer_UpdateHud(Handle timer) {
         case 2: rName = "Легендарный";
         case 3: rName = "МИФИЧЕСКИЙ";
     }
-    
+
     // Форматируем минуты и секунды
     int mins = timeLeft / 60;
     int secs = timeLeft % 60;
@@ -540,7 +540,7 @@ bool FindHottestSpawnPoint(float pos[3]) {
             GetClientAbsOrigin(i, playerPos);
             GetClientEyeAngles(i, eyeAng);
             GetAngleVectors(eyeAng, fwd, NULL_VECTOR, NULL_VECTOR);
-            
+
             pos[0] = playerPos[0] + (fwd[0] * 150.0);
             pos[1] = playerPos[1] + (fwd[1] * 150.0);
             pos[2] = playerPos[2] + 10.0;
