@@ -94,6 +94,25 @@ public Plugin myinfo = {
 // ==============================================================================
 // ИНИЦИАЛИЗАЦИЯ
 // ==============================================================================
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max) {
+    CreateNative("RPG_GetItemDropChance", Native_GetItemDropChance);
+    CreateNative("RPG_GetItemRareDropChance", Native_GetItemRareDropChance);
+    RegPluginLibrary("rpg_core");
+    return APLRes_Success;
+}
+
+public int Native_GetItemDropChance(Handle plugin, int numParams) {
+    int client = GetNativeCell(1);
+    if (client < 1 || client > MaxClients) return 0;
+    return view_as<int>(g_fItem_DropChance[client]);
+}
+
+public int Native_GetItemRareDropChance(Handle plugin, int numParams) {
+    int client = GetNativeCell(1);
+    if (client < 1 || client > MaxClients) return 0;
+    return view_as<int>(g_fItem_RareDropChance[client]);
+}
+
 public void OnPluginStart() {
     RegConsoleCmd("sm_rpg", Cmd_RPGMenu);
 
