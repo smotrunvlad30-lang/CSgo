@@ -31,6 +31,7 @@ bool g_bPhase10 = false;
 
 int g_iBossHP = 0;
 int g_iBossMaxHP = 0;
+int g_iCountdown = 0;
 float g_flLastAttackTime = 0.0;
 float g_flStuckCheckTime = 0.0;
 float g_flBossEndTime = 0.0; // Время, когда босс исчезнет (10 минут)
@@ -793,7 +794,6 @@ public Action Timer_ResetFOV(Handle timer, any userid) {
     return Plugin_Stop;
 }
 
-int g_iCountdown = 0;
 
 public Action Timer_SkillCountdown(Handle timer, DataPack pack) {
     if (!g_bBossActive || g_iBossClient == -1 || !IsClientInGame(g_iBossClient)) return Plugin_Stop;
