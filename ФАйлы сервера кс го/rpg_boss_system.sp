@@ -541,3 +541,11 @@ bool FindHottestSpawnPoint(float pos[3]) {
 public void SQL_Callback_Silent(Database db, DBResultSet results, const char[] error, any data) {
     if (error[0] != '\0') LogError("[RPG SQL Error] %s", error);
 }
+public Action CS_OnTerminateRound(float &delay, CSRoundEndReason &reason) {
+    if (g_bBossActive) {
+        if (reason != CSRoundEnd_Draw && reason != CSRoundEnd_CTWin) {
+            return Plugin_Handled;
+        }
+    }
+    return Plugin_Continue;
+}
