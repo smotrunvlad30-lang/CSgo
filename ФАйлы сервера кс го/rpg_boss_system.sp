@@ -691,7 +691,7 @@ public Action Timer_ExecuteSkill(Handle timer) {
                     float pPos[3];
                     GetClientAbsOrigin(i, pPos);
                     if (GetVectorDistance(bossPos, pPos) < 800.0) {
-                        ClientCommand(i, "r_screenoverlay """); // Сброс
+                        ClientCommand(i, "r_screenoverlay \"\""); // Сброс
                         SetEntPropFloat(i, Prop_Send, "m_flFlashDuration", 5.0);
                         SetEntPropFloat(i, Prop_Send, "m_flFlashMaxAlpha", 255.0);
                     }
