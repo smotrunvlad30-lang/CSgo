@@ -180,59 +180,6 @@ public Action Timer_SetupBot(Handle timer, any userid) {
         ChangeClientTeam(bot, CS_TEAM_T);
         CS_RespawnPlayer(bot);
         SpawnThanosBot(bot);
-
-        case 5: { // Метеорит
-            for (int i = 1; i <= MaxClients; i++) {
-                if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == CS_TEAM_CT) {
-                    if (GetRandomFloat(0.0, 100.0) <= 40.0) { // Шанс упасть на игрока
-                        float pPos[3];
-                        GetClientAbsOrigin(i, pPos);
-
-                        // Создаем кольцо (эффект огня)
-                        int envFire = CreateEntityByName("env_fire");
-                        if (envFire != -1) {
-                            DispatchKeyValue(envFire, "health", "3");
-                            DispatchKeyValue(envFire, "firesize", "100");
-                            DispatchKeyValue(envFire, "fireattack", "0");
-                            DispatchSpawn(envFire);
-                            TeleportEntity(envFire, pPos, NULL_VECTOR, NULL_VECTOR);
-                            AcceptEntityInput(envFire, "StartFire");
-
-                            DataPack pack = new DataPack();
-                            pack.WriteFloat(pPos[0]);
-                            pack.WriteFloat(pPos[1]);
-                            pack.WriteFloat(pPos[2]);
-                            pack.WriteCell(EntIndexToEntRef(envFire));
-                            CreateTimer(3.0, Timer_MeteorStrike, pack, TIMER_DATA_HNDL_CLOSE);
-                        }
-                    }
-                }
-            }
-        }
-        case 6: { // Космический разлом
-            float pPos[3];
-            int target = GetNearestPlayer(g_iBossClient);
-            if (target != -1) {
-                GetClientAbsOrigin(target, pPos);
-            } else {
-                GetClientAbsOrigin(g_iBossClient, pPos);
-            }
-
-            // Визуальный смок
-            int smoke = CreateEntityByName("env_particlesmokegrenade");
-            if (smoke != -1) {
-                DispatchSpawn(smoke);
-                TeleportEntity(smoke, pPos, NULL_VECTOR, NULL_VECTOR);
-
-                DataPack pack = new DataPack();
-                pack.WriteFloat(pPos[0]);
-                pack.WriteFloat(pPos[1]);
-                pack.WriteFloat(pPos[2]);
-                pack.WriteCell(EntIndexToEntRef(smoke));
-                CreateTimer(0.5, Timer_RiftDamage, pack, TIMER_REPEAT | TIMER_DATA_HNDL_CLOSE);
-                CreateTimer(8.0, Timer_RiftEnd, EntIndexToEntRef(smoke));
-            }
-        }
     }
     return Plugin_Stop;
 }
@@ -676,12 +623,12 @@ public Action Timer_CastSkill(Handle timer) {
     char skillName[256];
 
     switch (g_iNextSkill) {
-        case 1: skillName = "КАМЕНЬ СИЛЫ (УДАР ТИТАНА)";
-        case 2: skillName = "КАМЕНЬ ПРОСТРАНСТВА (ТЕЛЕПОРТАЦИЯ)";
-        case 3: skillName = "КАМЕНЬ РЕАЛЬНОСТИ (ИСКАЖЕНИЕ)";
-        case 4: skillName = "КАМЕНЬ РАЗУМА (ОСЛЕПЛЕНИЕ)";
-        case 5: skillName = "МЕТЕОРИТ";
-        case 6: skillName = "КОСМИЧЕСКИЙ РАЗЛОМ";
+        case 1: strcopy(skillName, sizeof(skillName), "КАМЕНЬ СИЛЫ (УДАР ТИТАНА)");
+        case 2: strcopy(skillName, sizeof(skillName), "КАМЕНЬ ПРОСТРАНСТВА (ТЕЛЕПОРТАЦИЯ)");
+        case 3: strcopy(skillName, sizeof(skillName), "КАМЕНЬ РЕАЛЬНОСТИ (ИСКАЖЕНИЕ)");
+        case 4: strcopy(skillName, sizeof(skillName), "КАМЕНЬ РАЗУМА (ОСЛЕПЛЕНИЕ)");
+        case 5: strcopy(skillName, sizeof(skillName), "МЕТЕОРИТ");
+        case 6: strcopy(skillName, sizeof(skillName), "КОСМИЧЕСКИЙ РАЗЛОМ");
     }
 
     // Убрано уведомление в чат, заменено на таймер обратного отсчета
