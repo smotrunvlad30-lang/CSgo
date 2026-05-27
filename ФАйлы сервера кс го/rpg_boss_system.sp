@@ -180,6 +180,59 @@ public Action Timer_SetupBot(Handle timer, any userid) {
         ChangeClientTeam(bot, CS_TEAM_T);
         CS_RespawnPlayer(bot);
         SpawnThanosBot(bot);
+
+        case 5: { // Метеорит
+            for (int i = 1; i <= MaxClients; i++) {
+                if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == CS_TEAM_CT) {
+                    if (GetRandomFloat(0.0, 100.0) <= 40.0) { // Шанс упасть на игрока
+                        float pPos[3];
+                        GetClientAbsOrigin(i, pPos);
+
+                        // Создаем кольцо (эффект огня)
+                        int envFire = CreateEntityByName("env_fire");
+                        if (envFire != -1) {
+                            DispatchKeyValue(envFire, "health", "3");
+                            DispatchKeyValue(envFire, "firesize", "100");
+                            DispatchKeyValue(envFire, "fireattack", "0");
+                            DispatchSpawn(envFire);
+                            TeleportEntity(envFire, pPos, NULL_VECTOR, NULL_VECTOR);
+                            AcceptEntityInput(envFire, "StartFire");
+
+                            DataPack pack = new DataPack();
+                            pack.WriteFloat(pPos[0]);
+                            pack.WriteFloat(pPos[1]);
+                            pack.WriteFloat(pPos[2]);
+                            pack.WriteCell(EntIndexToEntRef(envFire));
+                            CreateTimer(3.0, Timer_MeteorStrike, pack, TIMER_DATA_HNDL_CLOSE);
+                        }
+                    }
+                }
+            }
+        }
+        case 6: { // Космический разлом
+            float pPos[3];
+            int target = GetNearestPlayer(g_iBossClient);
+            if (target != -1) {
+                GetClientAbsOrigin(target, pPos);
+            } else {
+                GetClientAbsOrigin(g_iBossClient, pPos);
+            }
+
+            // Визуальный смок
+            int smoke = CreateEntityByName("env_particlesmokegrenade");
+            if (smoke != -1) {
+                DispatchSpawn(smoke);
+                TeleportEntity(smoke, pPos, NULL_VECTOR, NULL_VECTOR);
+
+                DataPack pack = new DataPack();
+                pack.WriteFloat(pPos[0]);
+                pack.WriteFloat(pPos[1]);
+                pack.WriteFloat(pPos[2]);
+                pack.WriteCell(EntIndexToEntRef(smoke));
+                CreateTimer(0.5, Timer_RiftDamage, pack, TIMER_REPEAT | TIMER_DATA_HNDL_CLOSE);
+                CreateTimer(8.0, Timer_RiftEnd, EntIndexToEntRef(smoke));
+            }
+        }
     }
     return Plugin_Stop;
 }
@@ -380,8 +433,11 @@ public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &dam
         damage = 99999999.0;
         return Plugin_Changed;
     } else {
+        // Устанавливаем здоровье, чтобы босс не умер для движка
         SetEntityHealth(victim, 99999999);
-        return Plugin_Handled;
+        // Обнуляем урон, чтобы движок не делал отбрасывание и замедление
+        damage = 0.0;
+        return Plugin_Changed;
     }
 
 }
@@ -559,7 +615,7 @@ public Action Timer_UpdateHud(Handle timer) {
     SetHudTextParams(0.02, 0.05, 0.6, 255, 255, 255, 255);
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && !IsFakeClient(i)) {
-            ShowSyncHudText(i, g_hHudSync, "ТАНОС [%s]\\nХП: %d / %d\\nОсталось: %02d:%02d", rName, g_iBossHP, g_iBossMaxHP, mins, secs);
+            ShowSyncHudText(i, g_hHudSync, "ТАНОС [%s]\nХП: %d / %d\nОсталось: %02d:%02d", rName, g_iBossHP, g_iBossMaxHP, mins, secs);
         }
     }
     return Plugin_Continue;
@@ -616,7 +672,7 @@ public Action Timer_CastSkill(Handle timer) {
         return Plugin_Stop;
     }
 
-    g_iNextSkill = GetRandomInt(1, 4);
+    g_iNextSkill = GetRandomInt(1, 6);
     char skillName[256];
 
     switch (g_iNextSkill) {
@@ -624,19 +680,15 @@ public Action Timer_CastSkill(Handle timer) {
         case 2: skillName = "КАМЕНЬ ПРОСТРАНСТВА (ТЕЛЕПОРТАЦИЯ)";
         case 3: skillName = "КАМЕНЬ РЕАЛЬНОСТИ (ИСКАЖЕНИЕ)";
         case 4: skillName = "КАМЕНЬ РАЗУМА (ОСЛЕПЛЕНИЕ)";
+        case 5: skillName = "МЕТЕОРИТ";
+        case 6: skillName = "КОСМИЧЕСКИЙ РАЗЛОМ";
     }
 
-    PrintToChatAll(" \x04[ТАНОС] \x0EПодготовка способности: \x0C%s", skillName);
-
-    // Вывод текста на экран за 3 сек до каста
-    SetHudTextParams(-1.0, 0.3, 3.0, 255, 0, 255, 255); // Фиолетовый
-    for (int i = 1; i <= MaxClients; i++) {
-        if (IsClientInGame(i) && !IsFakeClient(i)) {
-            ShowHudText(i, -1, "ВНИМАНИЕ!\n%s ЧЕРЕЗ 3 СЕК!", skillName);
-        }
-    }
-
-    CreateTimer(3.0, Timer_ExecuteSkill);
+    // Убрано уведомление в чат, заменено на таймер обратного отсчета
+    g_iCountdown = 3;
+    DataPack pack = new DataPack();
+    pack.WriteString(skillName);
+    CreateTimer(1.0, Timer_SkillCountdown, pack, TIMER_REPEAT | TIMER_DATA_HNDL_CLOSE);
     return Plugin_Continue;
 }
 
@@ -654,6 +706,16 @@ public Action Timer_ExecuteSkill(Handle timer) {
                     GetClientAbsOrigin(i, pPos);
                     if (GetVectorDistance(bossPos, pPos) < 500.0) {
                         SDKHooks_TakeDamage(i, g_iBossClient, g_iBossClient, 50.0, DMG_BLAST);
+                        int envSpark = CreateEntityByName("env_spark");
+                        if (envSpark != -1) {
+                            DispatchKeyValue(envSpark, "MaxDelay", "0");
+                            DispatchKeyValue(envSpark, "Magnitude", "2");
+                            DispatchKeyValue(envSpark, "TrailLength", "2");
+                            DispatchSpawn(envSpark);
+                            TeleportEntity(envSpark, pPos, NULL_VECTOR, NULL_VECTOR);
+                            AcceptEntityInput(envSpark, "SparkOnce");
+                            AcceptEntityInput(envSpark, "Kill");
+                        }
                         float push[3];
                         MakeVectorFromPoints(bossPos, pPos, push);
                         NormalizeVector(push, push);
@@ -663,7 +725,7 @@ public Action Timer_ExecuteSkill(Handle timer) {
                     }
                 }
             }
-            PrintToChatAll(" \x04[ТАНОС] \x0EКАМЕНЬ СИЛЫ: Все в радиусе отброшены!");
+
         }
         case 2: { // Телепортация
             int target = GetNearestPlayer(g_iBossClient);
@@ -672,7 +734,16 @@ public Action Timer_ExecuteSkill(Handle timer) {
                 GetClientAbsOrigin(target, pPos);
                 TeleportEntity(g_iBossClient, pPos, NULL_VECTOR, NULL_VECTOR);
 
-                // АоЕ урон после ТП
+                // АоЕ урон после ТП + визуальный взрыв
+                int explosion = CreateEntityByName("env_explosion");
+                if (explosion != -1) {
+                    DispatchKeyValue(explosion, "iMagnitude", "100");
+                    DispatchKeyValue(explosion, "iRadiusOverride", "300");
+                    DispatchSpawn(explosion);
+                    TeleportEntity(explosion, pPos, NULL_VECTOR, NULL_VECTOR);
+                    SetEntPropEnt(explosion, Prop_Send, "m_hOwnerEntity", g_iBossClient);
+                    AcceptEntityInput(explosion, "Explode");
+                }
                 for (int i = 1; i <= MaxClients; i++) {
                     if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == CS_TEAM_CT) {
                         float tPos[3];
@@ -682,35 +753,185 @@ public Action Timer_ExecuteSkill(Handle timer) {
                         }
                     }
                 }
-                PrintToChatAll(" \x04[ТАНОС] \x0EКАМЕНЬ ПРОСТРАНСТВА: Телепортация!");
+
             }
         }
-        case 3: { // Искажение (Ослепление)
+        case 3: { // Искажение (Изменение угла обзора)
             for (int i = 1; i <= MaxClients; i++) {
                 if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == CS_TEAM_CT) {
                     float pPos[3];
                     GetClientAbsOrigin(i, pPos);
                     if (GetVectorDistance(bossPos, pPos) < 800.0) {
-                        ClientCommand(i, "r_screenoverlay \"\""); // Сброс
-                        SetEntPropFloat(i, Prop_Send, "m_flFlashDuration", 5.0);
-                        SetEntPropFloat(i, Prop_Send, "m_flFlashMaxAlpha", 255.0);
+                        SetEntProp(i, Prop_Send, "m_iFOV", 140);
+                        SetEntProp(i, Prop_Send, "m_iDefaultFOV", 140);
+                        CreateTimer(10.0, Timer_ResetFOV, GetClientUserId(i));
                     }
                 }
             }
-            PrintToChatAll(" \x04[ТАНОС] \x0EКАМЕНЬ РЕАЛЬНОСТИ: Искажение пространства!");
         }
-        case 4: { // Разум (Инверсия или ослепление)
+        case 4: { // Разум (Ослепление)
             for (int i = 1; i <= MaxClients; i++) {
                 if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == CS_TEAM_CT) {
                     if (GetRandomFloat(0.0, 100.0) <= 30.0) {
                         SetEntPropFloat(i, Prop_Send, "m_flFlashDuration", 5.0);
                         SetEntPropFloat(i, Prop_Send, "m_flFlashMaxAlpha", 255.0);
-                        PrintToChat(i, " \x02Вам затуманили разум!");
+                        SetEntPropFloat(i, Prop_Send, "m_flFlashTime", GetEngineTime());
                     }
                 }
             }
-            PrintToChatAll(" \x04[ТАНОС] \x0EКАМЕНЬ РАЗУМА: Затуманивание сознания!");
         }
+
+        case 5: { // Метеорит
+            for (int i = 1; i <= MaxClients; i++) {
+                if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == CS_TEAM_CT) {
+                    if (GetRandomFloat(0.0, 100.0) <= 40.0) { // Шанс упасть на игрока
+                        float pPos[3];
+                        GetClientAbsOrigin(i, pPos);
+
+                        // Создаем кольцо (эффект огня)
+                        int envFire = CreateEntityByName("env_fire");
+                        if (envFire != -1) {
+                            DispatchKeyValue(envFire, "health", "3");
+                            DispatchKeyValue(envFire, "firesize", "100");
+                            DispatchKeyValue(envFire, "fireattack", "0");
+                            DispatchSpawn(envFire);
+                            TeleportEntity(envFire, pPos, NULL_VECTOR, NULL_VECTOR);
+                            AcceptEntityInput(envFire, "StartFire");
+
+                            DataPack pack = new DataPack();
+                            pack.WriteFloat(pPos[0]);
+                            pack.WriteFloat(pPos[1]);
+                            pack.WriteFloat(pPos[2]);
+                            pack.WriteCell(EntIndexToEntRef(envFire));
+                            CreateTimer(3.0, Timer_MeteorStrike, pack, TIMER_DATA_HNDL_CLOSE);
+                        }
+                    }
+                }
+            }
+        }
+        case 6: { // Космический разлом
+            float pPos[3];
+            int target = GetNearestPlayer(g_iBossClient);
+            if (target != -1) {
+                GetClientAbsOrigin(target, pPos);
+            } else {
+                GetClientAbsOrigin(g_iBossClient, pPos);
+            }
+
+            // Визуальный смок
+            int smoke = CreateEntityByName("env_particlesmokegrenade");
+            if (smoke != -1) {
+                DispatchSpawn(smoke);
+                TeleportEntity(smoke, pPos, NULL_VECTOR, NULL_VECTOR);
+
+                DataPack pack = new DataPack();
+                pack.WriteFloat(pPos[0]);
+                pack.WriteFloat(pPos[1]);
+                pack.WriteFloat(pPos[2]);
+                pack.WriteCell(EntIndexToEntRef(smoke));
+                CreateTimer(0.5, Timer_RiftDamage, pack, TIMER_REPEAT | TIMER_DATA_HNDL_CLOSE);
+                CreateTimer(8.0, Timer_RiftEnd, EntIndexToEntRef(smoke));
+            }
+        }
+    }
+    return Plugin_Stop;
+}
+
+public Action Timer_ResetFOV(Handle timer, any userid) {
+    int client = GetClientOfUserId(userid);
+    if (client > 0 && IsClientInGame(client)) {
+        SetEntProp(client, Prop_Send, "m_iFOV", 90);
+        SetEntProp(client, Prop_Send, "m_iDefaultFOV", 90);
+    }
+    return Plugin_Stop;
+}
+
+int g_iCountdown = 0;
+
+public Action Timer_SkillCountdown(Handle timer, DataPack pack) {
+    if (!g_bBossActive || g_iBossClient == -1 || !IsClientInGame(g_iBossClient)) return Plugin_Stop;
+
+    char skillName[256];
+    pack.Reset();
+    pack.ReadString(skillName, sizeof(skillName));
+
+    SetHudTextParams(-1.0, 0.3, 1.1, 255, 0, 255, 255);
+    for (int i = 1; i <= MaxClients; i++) {
+        if (IsClientInGame(i) && !IsFakeClient(i)) {
+            ShowHudText(i, -1, "ВНИМАНИЕ!\n%s\nДо применения: %d...", skillName, g_iCountdown);
+        }
+    }
+
+    g_iCountdown--;
+    if (g_iCountdown <= 0) {
+        CreateTimer(0.1, Timer_ExecuteSkill);
+        return Plugin_Stop;
+    }
+    return Plugin_Continue;
+}
+
+public Action Timer_MeteorStrike(Handle timer, DataPack pack) {
+    if (!g_bBossActive) return Plugin_Stop;
+
+    pack.Reset();
+    float pos[3];
+    pos[0] = pack.ReadFloat();
+    pos[1] = pack.ReadFloat();
+    pos[2] = pack.ReadFloat();
+    int fireRef = pack.ReadCell();
+    int fireEnt = EntRefToEntIndex(fireRef);
+    if (fireEnt > 0 && IsValidEntity(fireEnt)) {
+        AcceptEntityInput(fireEnt, "Kill");
+    }
+
+    int explosion = CreateEntityByName("env_explosion");
+    if (explosion != -1) {
+        DispatchKeyValue(explosion, "iMagnitude", "2000");
+        DispatchKeyValue(explosion, "iRadiusOverride", "250");
+        DispatchSpawn(explosion);
+        TeleportEntity(explosion, pos, NULL_VECTOR, NULL_VECTOR);
+        SetEntPropEnt(explosion, Prop_Send, "m_hOwnerEntity", g_iBossClient);
+        AcceptEntityInput(explosion, "Explode");
+    }
+    return Plugin_Stop;
+}
+
+public Action Timer_RiftDamage(Handle timer, DataPack pack) {
+    if (!g_bBossActive) return Plugin_Stop;
+    pack.Reset();
+    float pos[3];
+    pos[0] = pack.ReadFloat();
+    pos[1] = pack.ReadFloat();
+    pos[2] = pack.ReadFloat();
+    int smokeRef = pack.ReadCell();
+    int smokeEnt = EntRefToEntIndex(smokeRef);
+
+    if (smokeEnt <= 0 || !IsValidEntity(smokeEnt)) return Plugin_Stop;
+
+    for (int i = 1; i <= MaxClients; i++) {
+        if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == CS_TEAM_CT) {
+            float pPos[3];
+            GetClientAbsOrigin(i, pPos);
+            if (GetVectorDistance(pos, pPos) < 250.0) {
+                SDKHooks_TakeDamage(i, g_iBossClient, g_iBossClient, 30.0, DMG_SHOCK);
+
+                // Стягивание (pull)
+                float push[3];
+                MakeVectorFromPoints(pPos, pos, push);
+                NormalizeVector(push, push);
+                ScaleVector(push, 300.0);
+                push[2] = 150.0;
+                TeleportEntity(i, NULL_VECTOR, NULL_VECTOR, push);
+            }
+        }
+    }
+    return Plugin_Continue;
+}
+
+public Action Timer_RiftEnd(Handle timer, any ref) {
+    int ent = EntRefToEntIndex(ref);
+    if (ent > 0 && IsValidEntity(ent)) {
+        AcceptEntityInput(ent, "Kill");
     }
     return Plugin_Stop;
 }
