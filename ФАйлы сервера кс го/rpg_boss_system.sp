@@ -22,6 +22,13 @@ Handle g_hHudTimer = null;
 Handle g_hRespawnTimer = null;
 Handle g_hHudSync = null;
 
+Handle g_hSkillTimer = null;
+int g_iNextSkill = -1;
+bool g_bSnapUsed = false;
+bool g_bPhase30 = false;
+bool g_bPhase10 = false;
+
+
 int g_iBossHP = 0;
 int g_iBossMaxHP = 0;
 float g_flLastAttackTime = 0.0;
@@ -103,6 +110,7 @@ public void OnMapEnd() {
     g_iBossClient = -1;
     if (g_hHudTimer != null) { KillTimer(g_hHudTimer); g_hHudTimer = null; }
     if (g_hRespawnTimer != null) { KillTimer(g_hRespawnTimer); g_hRespawnTimer = null; }
+        if (g_hSkillTimer != null) { KillTimer(g_hSkillTimer); g_hSkillTimer = null; }
 
     // Возвращаем обычные условия раунда, если карта сменилась во время босса
     ServerCommand("mp_ignore_round_win_conditions 0");
@@ -216,6 +224,13 @@ void SpawnThanosBot(int bot) {
     if (g_hHudTimer != null) KillTimer(g_hHudTimer);
     g_hHudTimer = CreateTimer(0.5, Timer_UpdateHud, _, TIMER_REPEAT);
 
+
+    g_bSnapUsed = false;
+    g_bPhase30 = false;
+    g_bPhase10 = false;
+    if (g_hSkillTimer != null) KillTimer(g_hSkillTimer);
+    g_hSkillTimer = CreateTimer(15.0, Timer_CastSkill, _, TIMER_REPEAT);
+
     if (g_hRespawnTimer != null) KillTimer(g_hRespawnTimer);
     g_hRespawnTimer = CreateTimer(1.0, Timer_EnforceRules, _, TIMER_REPEAT);
 
@@ -266,7 +281,12 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
         GetVectorAngles(dir, ang);
         ang[0] = 0.0;
         angles = ang;
-        vel[0] = 500.0;
+
+        float speedMod = 500.0;
+        if (g_bPhase30) speedMod = 700.0;
+        if (g_bPhase10) speedMod = 900.0;
+        vel[0] = speedMod;
+
         buttons |= IN_FORWARD;
 
         float currentVel[3];
@@ -305,6 +325,41 @@ public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &dam
     int dmgDealt = RoundFloat(damage);
     g_iBossHP -= dmgDealt;
 
+    // Ультимейты по ХП
+    float hpPct = float(g_iBossHP) / float(g_iBossMaxHP);
+
+    // Щелчок (50%)
+    if (hpPct <= 0.5 && !g_bSnapUsed) {
+        g_bSnapUsed = true;
+        PrintToChatAll(" \x02[ТАНОС] \x10Я сама неотвратимость... (ЩЕЛЧОК)");
+        for (int i = 1; i <= MaxClients; i++) {
+            if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == CS_TEAM_CT) {
+                if (GetRandomFloat(0.0, 100.0) <= 50.0) {
+                    int curHp = GetClientHealth(i);
+                    int newHp = curHp / 2;
+                    if (newHp < 1) newHp = 1;
+                    SetEntityHealth(i, newHp);
+                    PrintToChat(i, " \x04[ТАНОС] \x01Вас задело щелчком! Половина здоровья уничтожена.");
+                }
+            }
+        }
+    }
+
+    // Ярость Титана (30%)
+    if (hpPct <= 0.3 && !g_bPhase30) {
+        g_bPhase30 = true;
+        PrintToChatAll(" \x02[ТАНОС] \x07ЯРОСТЬ ТИТАНА! Босс ускорен!");
+    }
+
+    // Финальная фаза (10%)
+    if (hpPct <= 0.1 && !g_bPhase10) {
+        g_bPhase10 = true;
+        PrintToChatAll(" \x02[ТАНОС] \x04ФИНАЛЬНАЯ ФАЗА! Время скиллов уменьшено!");
+        if (g_hSkillTimer != null) KillTimer(g_hSkillTimer);
+        g_hSkillTimer = CreateTimer(8.0, Timer_CastSkill, _, TIMER_REPEAT);
+    }
+
+
     if (attacker > 0 && attacker <= MaxClients && attacker != g_iBossClient) {
         g_bPlayerParticipated[attacker] = true;
         PrintCenterText(attacker, "УРОН ПО БОССУ: -%d | ОСТАЛОСЬ: %d", dmgDealt, g_iBossHP);
@@ -319,14 +374,16 @@ public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &dam
         }
     }
 
+
     if (g_iBossHP <= 0) {
         g_iBossHP = 0;
         damage = 99999999.0;
         return Plugin_Changed;
     } else {
         SetEntityHealth(victim, 99999999);
-        return Plugin_Continue;
+        return Plugin_Handled;
     }
+
 }
 
 void GiveRandomResource(int client) {
@@ -370,6 +427,7 @@ public Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadca
         // Очищаем все таймеры
         if (g_hHudTimer != null) { KillTimer(g_hHudTimer); g_hHudTimer = null; }
         if (g_hRespawnTimer != null) { KillTimer(g_hRespawnTimer); g_hRespawnTimer = null; }
+        if (g_hSkillTimer != null) { KillTimer(g_hSkillTimer); g_hSkillTimer = null; }
 
         // Завершаем раунд победой CT и включаем обычные условия раунда обратно
         ServerCommand("mp_ignore_round_win_conditions 0");
@@ -478,6 +536,7 @@ public Action Timer_UpdateHud(Handle timer) {
 
         // Отключаем бесконечные спавны и делаем Ничью
         if (g_hRespawnTimer != null) { KillTimer(g_hRespawnTimer); g_hRespawnTimer = null; }
+        if (g_hSkillTimer != null) { KillTimer(g_hSkillTimer); g_hSkillTimer = null; }
         ServerCommand("mp_ignore_round_win_conditions 0");
         CS_TerminateRound(3.0, CSRoundEnd_Draw);
 
@@ -500,7 +559,7 @@ public Action Timer_UpdateHud(Handle timer) {
     SetHudTextParams(0.02, 0.05, 0.6, 255, 255, 255, 255);
     for (int i = 1; i <= MaxClients; i++) {
         if (IsClientInGame(i) && !IsFakeClient(i)) {
-            ShowSyncHudText(i, g_hHudSync, "ТАНОС [%s]\nХП: %d / %d\nОсталось: %02d:%02d", rName, g_iBossHP, g_iBossMaxHP, mins, secs);
+            ShowSyncHudText(i, g_hHudSync, "ТАНОС [%s]\\nХП: %d / %d\\nОсталось: %02d:%02d", rName, g_iBossHP, g_iBossMaxHP, mins, secs);
         }
     }
     return Plugin_Continue;
@@ -548,4 +607,110 @@ public Action CS_OnTerminateRound(float &delay, CSRoundEndReason &reason) {
         }
     }
     return Plugin_Continue;
+}
+
+
+public Action Timer_CastSkill(Handle timer) {
+    if (!g_bBossActive || g_iBossClient == -1 || !IsClientInGame(g_iBossClient)) {
+        g_hSkillTimer = null;
+        return Plugin_Stop;
+    }
+
+    g_iNextSkill = GetRandomInt(1, 4);
+    char skillName[64];
+
+    switch (g_iNextSkill) {
+        case 1: skillName = "КАМЕНЬ СИЛЫ (УДАР ТИТАНА)";
+        case 2: skillName = "КАМЕНЬ ПРОСТРАНСТВА (ТЕЛЕПОРТАЦИЯ)";
+        case 3: skillName = "КАМЕНЬ РЕАЛЬНОСТИ (ИСКАЖЕНИЕ)";
+        case 4: skillName = "КАМЕНЬ РАЗУМА (ОСЛЕПЛЕНИЕ)";
+    }
+
+    PrintToChatAll(" \x04[ТАНОС] \x0EПодготовка способности: \x0C%s", skillName);
+
+    // Вывод текста на экран за 3 сек до каста
+    SetHudTextParams(-1.0, 0.3, 3.0, 255, 0, 255, 255); // Фиолетовый
+    for (int i = 1; i <= MaxClients; i++) {
+        if (IsClientInGame(i) && !IsFakeClient(i)) {
+            ShowHudText(i, -1, "ВНИМАНИЕ!\n%s ЧЕРЕЗ 3 СЕК!", skillName);
+        }
+    }
+
+    CreateTimer(3.0, Timer_ExecuteSkill);
+    return Plugin_Continue;
+}
+
+public Action Timer_ExecuteSkill(Handle timer) {
+    if (!g_bBossActive || g_iBossClient == -1 || !IsClientInGame(g_iBossClient)) return Plugin_Stop;
+
+    float bossPos[3];
+    GetClientAbsOrigin(g_iBossClient, bossPos);
+
+    switch (g_iNextSkill) {
+        case 1: { // Удар Титана
+            for (int i = 1; i <= MaxClients; i++) {
+                if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == CS_TEAM_CT) {
+                    float pPos[3];
+                    GetClientAbsOrigin(i, pPos);
+                    if (GetVectorDistance(bossPos, pPos) < 500.0) {
+                        SDKHooks_TakeDamage(i, g_iBossClient, g_iBossClient, 50.0, DMG_BLAST);
+                        float push[3];
+                        MakeVectorFromPoints(bossPos, pPos, push);
+                        NormalizeVector(push, push);
+                        ScaleVector(push, 800.0);
+                        push[2] = 400.0;
+                        TeleportEntity(i, NULL_VECTOR, NULL_VECTOR, push);
+                    }
+                }
+            }
+            PrintToChatAll(" \x04[ТАНОС] \x0EКАМЕНЬ СИЛЫ: Все в радиусе отброшены!");
+        }
+        case 2: { // Телепортация
+            int target = GetNearestPlayer(g_iBossClient);
+            if (target != -1) {
+                float pPos[3];
+                GetClientAbsOrigin(target, pPos);
+                TeleportEntity(g_iBossClient, pPos, NULL_VECTOR, NULL_VECTOR);
+
+                // АоЕ урон после ТП
+                for (int i = 1; i <= MaxClients; i++) {
+                    if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == CS_TEAM_CT) {
+                        float tPos[3];
+                        GetClientAbsOrigin(i, tPos);
+                        if (GetVectorDistance(pPos, tPos) < 300.0) {
+                            SDKHooks_TakeDamage(i, g_iBossClient, g_iBossClient, 40.0, DMG_ENERGYBEAM);
+                        }
+                    }
+                }
+                PrintToChatAll(" \x04[ТАНОС] \x0EКАМЕНЬ ПРОСТРАНСТВА: Телепортация!");
+            }
+        }
+        case 3: { // Искажение (Ослепление)
+            for (int i = 1; i <= MaxClients; i++) {
+                if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == CS_TEAM_CT) {
+                    float pPos[3];
+                    GetClientAbsOrigin(i, pPos);
+                    if (GetVectorDistance(bossPos, pPos) < 800.0) {
+                        ClientCommand(i, "r_screenoverlay """); // Сброс
+                        SetEntPropFloat(i, Prop_Send, "m_flFlashDuration", 5.0);
+                        SetEntPropFloat(i, Prop_Send, "m_flFlashMaxAlpha", 255.0);
+                    }
+                }
+            }
+            PrintToChatAll(" \x04[ТАНОС] \x0EКАМЕНЬ РЕАЛЬНОСТИ: Искажение пространства!");
+        }
+        case 4: { // Разум (Инверсия или ослепление)
+            for (int i = 1; i <= MaxClients; i++) {
+                if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == CS_TEAM_CT) {
+                    if (GetRandomFloat(0.0, 100.0) <= 30.0) {
+                        SetEntPropFloat(i, Prop_Send, "m_flFlashDuration", 5.0);
+                        SetEntPropFloat(i, Prop_Send, "m_flFlashMaxAlpha", 255.0);
+                        PrintToChat(i, " \x02Вам затуманили разум!");
+                    }
+                }
+            }
+            PrintToChatAll(" \x04[ТАНОС] \x0EКАМЕНЬ РАЗУМА: Затуманивание сознания!");
+        }
+    }
+    return Plugin_Stop;
 }
