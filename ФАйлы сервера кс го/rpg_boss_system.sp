@@ -617,7 +617,7 @@ public Action Timer_CastSkill(Handle timer) {
     }
 
     g_iNextSkill = GetRandomInt(1, 4);
-    char skillName[64];
+    char skillName[256];
 
     switch (g_iNextSkill) {
         case 1: skillName = "КАМЕНЬ СИЛЫ (УДАР ТИТАНА)";
